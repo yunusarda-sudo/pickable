@@ -74,9 +74,11 @@ def live_backend():
         if not job:
             return None
         runs = storage.get_source_runs(job_id)
+        running = job["status"] in ("pending", "running")
+        pending = [a.source_id for a in orchestrator.adapters if running and a.source_id not in {r["source_id"] for r in runs}]
         return {"id": job["id"], "domain": job["domain"], "created_at": job["started_at"], "status": job["status"],
                 "sources": [{"id": r["source_id"], "status": r["status"], "error": r["error"]} for r in runs],
-                "report": report_from_job(job, runs) if runs else None}  # partial: render as soon as the first source lands
+                "report": report_from_job(job, runs, pending) if runs else None}  # partial: render as soon as the first source lands
 
     def raw(job_id, source):
         run = next((r for r in storage.get_source_runs(job_id) if r["source_id"] == source), None)

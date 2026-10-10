@@ -1,7 +1,7 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
 const state = { report: null, jobId: null, token: null, generation: 0, config: null };
-const nativeLabels = { PASS: "Pass", FAIL: "Missing", WARNING: "Warning", UNKNOWN: "Unclear", NOT_APPLICABLE: "N/A" };
+const nativeLabels = { PASS: "Pass", FAIL: "Missing", WARNING: "Warning", UNKNOWN: "Unclear", NOT_APPLICABLE: "N/A", PENDING: "Waiting" };
 const SOURCES = [["ora", "Ora"], ["cloudflare", "Cloudflare"]];
 const sourceName = (id) => (SOURCES.find(([key]) => key === id) || [, "Source"])[1];
 const sourceLabels = { completed: "Completed", partial: "Partial", running: "Running", pending: "Waiting", unavailable: "Unavailable", failed: "Error", timeout: "Timed out", interrupted: "Interrupted" };
@@ -128,7 +128,7 @@ function modelReport(report) {
   return {
     passed: checks.filter(c => c.scoring_status === "PASS").length,
     failed: checks.filter(c => c.scoring_status === "FAIL").length,
-    uncertain: checks.filter(c => !["PASS", "FAIL"].includes(c.scoring_status)).length,
+    uncertain: checks.filter(c => !["PASS", "FAIL", "PENDING"].includes(c.scoring_status)).length,
     actions: checks.filter(c => c.scoring_status === "FAIL"),
   };
 }
@@ -144,7 +144,7 @@ function evidenceButton(check, label = "View source evidence ↗") {
 }
 function renderReportExperience(report) {
   const model = modelReport(report);
-  $("report-headline").textContent = report.score.total === null ? "More evidence needed." : model.failed ? "There is room to improve." : model.uncertain ? "Good signals, incomplete picture." : "Measured checks look good.";
+  $("report-headline").textContent = report.score.final === false ? "Finalizing your score…" : report.score.total === null ? "More evidence needed." : model.failed ? "There is room to improve." : model.uncertain ? "Good signals, incomplete picture." : "Measured checks look good.";
   $("report-summary").textContent = reportSummary(report);
   $("report-counts").replaceChildren();
   for (const [count, label, tone] of [[model.passed,"Passed","positive"],[model.failed,"Missing","negative"],[model.uncertain,"Not scored","neutral"]]) {
@@ -195,13 +195,14 @@ function renderReport(report) {
   $("empty-state").hidden = true; $("results").hidden = false;
   $("report-domain").textContent = report.domain;
   $("report-time").textContent = `${formatTime(report.scanned_at)} · Mapping ${report.mapping_version || "0.1"}${state.config?.mode === "demo" ? " · TEST DATA" : ""}`;
-  $("score-total").textContent = report.score.total ?? "—";
-  $("score-coverage").textContent = `${report.score.coverage}% weighted measurement coverage${report.score.coverage < 100 ? " · incomplete coverage" : ""}`;
+  const pending = report.score.final === false;  // never show a number a still-running source could change
+  $("score-total").textContent = pending ? "…" : report.score.total ?? "—";
+  $("score-coverage").textContent = pending ? "Waiting for the remaining sources before scoring." : `${report.score.coverage}% weighted measurement coverage${report.score.coverage < 100 ? " · incomplete coverage" : ""}`;
   $("layers").replaceChildren();
   for (const layer of Object.values(report.score.breakdown)) {
     const row = element("div", "layer"); const track = element("div", "layer-track"); const fill = element("div", "layer-fill");
-    fill.style.width = `${layer.points === null ? 0 : Math.min(100, Math.max(0, layer.points / layer.max_points * 100))}%`; track.append(fill);
-    row.append(element("span", "", layer.label), track, element("span", "layer-value", layer.points === null ? "Not measured" : `${layer.points}/${layer.max_points}`));
+    fill.style.width = `${pending || layer.points === null ? 0 : Math.min(100, Math.max(0, layer.points / layer.max_points * 100))}%`; track.append(fill);
+    row.append(element("span", "", layer.label), track, element("span", "layer-value", pending ? "…" : layer.points === null ? "Not measured" : `${layer.points}/${layer.max_points}`));
     row.title = `${layer.measured}/${layer.defined} checks measured`; $("layers").append(row);
   }
   updateSources(report.sources); renderChecks();

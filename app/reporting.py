@@ -33,7 +33,7 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def report_from_job(job, source_runs):
+def report_from_job(job, source_runs, pending=()):
     sources = {}
     for run in source_runs:
         source = run.get("source_id")
@@ -54,7 +54,7 @@ def report_from_job(job, source_runs):
             observed_at = run.get("finished_at")
         sources[source] = {"status": run.get("status", "unavailable"), "raw": raw,
                            "error": error, "observed_at": observed_at}
-    return build_report(job["domain"], sources)
+    return build_report(job["domain"], sources, pending)
 
 
 def flatten(source, raw):
@@ -102,7 +102,8 @@ def score_checks(checks):
             "label": "Preliminary score", "method": "Layer score = PASS / (PASS + FAIL) × layer weight. Unmeasured layers are null; no free points. Warning/UNKNOWN/N/A are excluded; coverage is shown separately."}
 
 
-def build_report(domain, sources):
+def build_report(domain, sources, pending=()):
+    """`pending`: sources still running. A check is only shown once no pending source could override it."""
     envelopes = {}
     for source in SOURCES:
         envelope = dict(sources.get(source) or {"status": "unavailable", "raw": None})
@@ -124,6 +125,9 @@ def build_report(domain, sources):
         reason = f"{SOURCE_NAMES[basis]} reported a definitive result." if basis else NO_EVIDENCE
         if basis == "cloudflare":
             reason += " Ora had no definitive result, so Cloudflare was used as fallback."
+        # Undecided until every source that outranks the basis (or every source, if none decided) has finished.
+        if any(s in pending and s in observations for s in (SOURCES[:SOURCES.index(basis)] if basis else SOURCES)):
+            status, basis, reason = "PENDING", None, "Waiting for a higher-priority source before deciding this check."
         checks.append({"check_id": cid, "title": title, "category": category,
                        "measurement_definition": definition, "sources": observations, "combined_status": status if basis else "UNKNOWN",
                        "scoring_status": status, "scoring_source": basis, "reason": reason})
@@ -140,5 +144,5 @@ def build_report(domain, sources):
     if not isinstance(recommendations, list):
         recommendations = []
     return {"schema_version": "0.1", "mapping_version": "2026-10-10.2", "domain": domain, "scanned_at": now(),
-            "sources": summaries, "checks": checks, "score": score_checks(checks),
+            "sources": summaries, "checks": checks, "score": {**score_checks(checks), "final": not any(c["scoring_status"] == "PENDING" for c in checks)},
             "source_specific": specific, "recommendations": recommendations}

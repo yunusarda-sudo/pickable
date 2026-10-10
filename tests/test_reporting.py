@@ -69,6 +69,27 @@ class ScoreTests(unittest.TestCase):
                 report = build_report("example.com", sources(ora=raw))
                 self.assertIsNone(report["score"]["total"])
 
+    def test_partial_results_never_show_what_a_running_source_could_override(self):
+        cf = {"checks": {"discoverability": {"sitemap": {"status": "fail"}}}}
+        ora = ora_checks({"sitemap": "pass"})
+        # Cloudflare landed first: Ora outranks it, so nothing is decided and no score is final.
+        early = build_report("example.com", {"cloudflare": {"status": "completed", "raw": cf}}, pending=["ora"])
+        self.assertTrue(all(c["scoring_status"] == "PENDING" for c in early["checks"]))
+        self.assertFalse(early["score"]["final"])
+        # Ora landed first with a definitive result: final, even while Cloudflare runs.
+        ora_first = build_report("example.com", sources(ora), pending=["cloudflare"])
+        self.assertEqual(row_status(ora_first, "discovery.sitemap"), "PASS")
+        # An undecided Ora check waits for the Cloudflare fallback.
+        self.assertEqual(row_status(ora_first, "discovery.link_headers"), "PENDING")
+        self.assertFalse(ora_first["score"]["final"])
+        done = build_report("example.com", {**sources(ora), "cloudflare": {"status": "completed", "raw": cf}})
+        self.assertEqual(row_status(done, "discovery.sitemap"), "PASS")
+        self.assertTrue(done["score"]["final"])
+
+
+def row_status(report, check_id):
+    return next(c["scoring_status"] for c in report["checks"] if c["check_id"] == check_id)
+
 
 if __name__ == "__main__":
     unittest.main()

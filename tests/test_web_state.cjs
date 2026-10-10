@@ -104,6 +104,18 @@ test('running scan shows a partial report as soon as one exists and keeps pollin
   assert.equal(ui.get('ora-state').textContent, 'Waiting');
 });
 
+test('a non-final score is never displayed', () => {
+  const ui = setup(() => ({}));
+  const value = report();
+  value.score = {total: 57.5, coverage: 60, final: false, breakdown: {discovery: {label: 'Discoverability', points: 20, max_points: 20}}};
+  ui.renderReport(value);
+  assert.equal(ui.get('score-total').textContent, '…');
+  assert.equal(ui.get('layers').children[0].children[2].textContent, '…');
+  value.score.final = true;
+  ui.renderReport(value);
+  assert.equal(String(ui.get('score-total').textContent), '57.5');
+});
+
 test('running scan without any source report stays on the loading view', async () => {
   const ui = setup(() => ({status:'running', sources:[], report:null}));
   await ui.loadScan('pending', ui.state.generation);
