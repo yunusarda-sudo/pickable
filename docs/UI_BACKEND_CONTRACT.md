@@ -36,9 +36,9 @@ report = build_report("randevuo.com.tr", {
   Cloudflare's, if definitive (fallback). Otherwise the check is unscored. llms.txt is Ora-only.
 - `combined_status`: the scoring status when definitive, else UNKNOWN.
 - Only PASS+FAIL count in the denominator; warnings, UNKNOWN and N/A are excluded. Unmeasured layers are null.
-- Weights 20/25/35/10/10. Security and payments are not scored yet, so all defined checks passing
-  gives 80/100 at 80% coverage; unmeasured areas never earn free points.
-- `score.coverage`: weighted coverage of definitive measurements. `score.rubric_version`: pickable-0.1.
+- Layers: discoverability 20, readability 25, usability 35 (relative weights). The total and coverage
+  are rescaled to /100, so all defined checks passing gives 100/100; unmeasured layers never earn free points.
+- `score.coverage`: weighted coverage of definitive measurements. `score.rubric_version`: pickable-0.2.
 - Raw provider statuses, scores and recommendation order are preserved. `source_specific` keeps all
   unmapped findings. The UI renders provider text with `textContent` only.
 

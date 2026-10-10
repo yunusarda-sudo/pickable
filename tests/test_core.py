@@ -92,8 +92,8 @@ class ReportingTests(unittest.TestCase):
         score = report["score"]
         self.assertIsNone(score["total"])
         self.assertEqual(score["coverage"], 0)
-        for layer, weight in {"discovery": 20, "content": 25, "usability": 35,
-                              "security": 10, "payments": 10}.items():
+        self.assertEqual(set(score["breakdown"]), {"discovery", "content", "usability"})
+        for layer, weight in {"discovery": 20, "content": 25, "usability": 35}.items():
             self.assertEqual(score["breakdown"][layer]["max_points"], weight)
             self.assertIsNone(score["breakdown"][layer]["points"])
 
@@ -124,7 +124,7 @@ class ReportingTests(unittest.TestCase):
         self.assertIsNotNone(report["score"]["total"])
         self.assertGreater(report["score"]["coverage"], 0)
         self.assertLess(report["score"]["coverage"], 100)
-        self.assertIsNone(report["score"]["breakdown"]["payments"]["points"])
+        self.assertIsNone(report["score"]["breakdown"]["usability"]["points"])
 
     def test_unmapped_provider_rows_remain_available(self):
         report = build_report("example.com", sources(

@@ -35,11 +35,11 @@ Visual references: [Ora's report](https://ora.ai/score/ora.ai) and
 
 Provider scores are shown separately; the product score is not their average. Each layer scores
 `PASS / (PASS + FAIL) × weight` over the seven canonical checks. Weights: discoverability 20,
-readability 25, usability 35, security & compliance 10, payments 10.
+readability 25, usability 35; the total is rescaled to /100.
 
 UNKNOWN, warning and N/A results are excluded from the denominator. Unmeasured layers stay `null`;
-coverage is shown separately. Security and payments are not scored yet, so a perfect run is 80/100 at
-80% coverage, which is why the UI calls it a **preliminary score**.
+coverage is shown separately. The checks cover only part of agent readiness, which is why the UI calls
+it a **preliminary score**.
 
 Each check uses Ora's definitive result; when Ora has none, Cloudflare's definitive result is used as
 a fallback. Every row shows which source it was scored from. No independent verification is claimed.

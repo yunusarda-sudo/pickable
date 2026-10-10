@@ -8,20 +8,20 @@ class ScoreTests(unittest.TestCase):
     def test_all_defined_checks_pass_without_credit_for_unmeasured_layers(self):
         report = build_report("example.com", sources(
             ora_checks({i: "pass" for i in ORA_IDS.values()})))
-        self.assertEqual(report["score"]["total"], 80)
-        self.assertEqual(report["score"]["coverage"], 80)
-        self.assertIsNone(report["score"]["breakdown"]["security"]["points"])
+        # Layer weights 20/25/35 are relative; a perfect run is 100/100 at full coverage.
+        self.assertEqual(report["score"]["total"], 100)
+        self.assertEqual(report["score"]["coverage"], 100)
         self.assertEqual(report["checks"][2]["scoring_source"], "ora")
 
     def test_all_fail_is_measured_zero_not_missing(self):
         report = build_report("example.com", sources(ora_checks({i: "fail" for i in ORA_IDS.values()})))
         self.assertEqual(report["score"]["total"], 0)
-        self.assertEqual(report["score"]["coverage"], 80)
+        self.assertEqual(report["score"]["coverage"], 100)
 
     def test_unknown_excluded_from_layer_denominator_but_reduces_coverage(self):
         report = build_report("example.com", sources(ora_checks({"sitemap": "pass", "link-headers-discovery": "error"})))
         self.assertEqual(report["score"]["breakdown"]["discovery"]["points"], 20)
-        self.assertEqual(report["score"]["coverage"], 10)
+        self.assertEqual(report["score"]["coverage"], 12.5)  # 10 of 80 weight points
 
     def test_top_fixes_order_and_original_status_are_not_changed(self):
         raw = ora_checks({"sitemap": "warning"})

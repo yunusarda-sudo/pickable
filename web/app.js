@@ -111,8 +111,6 @@ const categoryCopy = {
   discovery: ["Discoverability", "Can agents find your entry points?", "01"],
   content: ["Readability", "Is your content easy for machines to read?", "02"],
   usability: ["Usability", "Are there integration and authentication signals?", "03"],
-  security: ["Security & compliance", "Not measured in this version yet.", "04"],
-  payments: ["Payments", "Not measured in this version yet.", "05"],
 };
 const checkGuidance = {
   "discovery.sitemap": ["A sitemap helps agents discover the pages on your site.", "Publish a valid XML sitemap and reference it in robots.txt."],
@@ -157,7 +155,7 @@ function renderReportExperience(report) {
     const card = element("article", "action-card");
     card.append(element("span", "action-number", String(index + 1).padStart(2,"0")), element("h3", "", check.title));
     card.append(element("p", "", checkGuidance[check.check_id]?.[1] || "Review the reported gap together with its evidence."));
-    card.append(element("small", "action-basis", `Based on ${sourceName(check.scoring_source)} · Pickable suggestion`), evidenceButton(check));
+    card.append(evidenceButton(check));
     $("action-list").append(card);
   }
   if (!model.actions.length) $("action-list").append(element("p", "report-empty", model.uncertain ? "No definitive gaps. Review unscored checks to see measurement gaps." : "No gaps found in the measured checks."));
@@ -175,14 +173,10 @@ function renderReportExperience(report) {
       summary.append(badge(check.scoring_status), element("span", "finding-title", check.title), element("span", "finding-arrow", "+")); row.append(summary);
       const body = element("div", "finding-body");
       body.append(element("p", "finding-purpose", checkGuidance[check.check_id]?.[0] || check.measurement_definition));
-      const observations = element("div", "observation-grid");
-      for (const [id, label] of SOURCES.filter(([id]) => check.sources?.[id])) {
-        const observation = check.sources?.[id]; const raw = observation?.raw || {};
-        const block = element("div", "observation-card");
-        const head = element("div", "observation-heading"); head.append(element("strong", "", label),badge(observation?.status));
-        block.append(head,element("p", "", scalar(raw.message) || scalar(raw.details) || "See the raw evidence for details.")); observations.append(block);
-      }
-      body.append(observations,element("p", "finding-context", check.reason),evidenceButton(check));
+      const raw = check.sources?.[check.scoring_source || "ora"]?.raw || {};
+      const finding = scalar(raw.message) || scalar(raw.details);
+      if (finding) body.append(element("p", "finding-context", finding));
+      body.append(evidenceButton(check));
       row.append(body); section.append(row);
     }
     if (!checks.length) section.append(element("p", "unmeasured-note", "This layer is not covered by this version; it earns no points."));
@@ -229,7 +223,7 @@ function renderMarketing(marketing) {
   $("mk-action-list").replaceChildren();
   for (const [index, check] of model.actions.entries()) {
     const card = element("article", "action-card");
-    card.append(element("span", "action-number", String(index + 1).padStart(2,"0")), element("h3", "", check.title), element("p", "", marketingGuidance[check.check_id]?.[1] || check.measurement_definition), element("small", "action-basis", "Pickable marketing playbook"));
+    card.append(element("span", "action-number", String(index + 1).padStart(2,"0")), element("h3", "", check.title), element("p", "", marketingGuidance[check.check_id]?.[1] || check.measurement_definition));
     $("mk-action-list").append(card);
   }
   if (!model.actions.length) $("mk-action-list").append(element("p", "report-empty", marketing.score.final === false ? "Checking your site now." : "No gaps found in the playbook checks."));

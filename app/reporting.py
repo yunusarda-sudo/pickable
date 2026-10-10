@@ -4,8 +4,8 @@ import json
 
 SOURCES = ("ora", "cloudflare")  # scoring preference order: Cloudflare fills checks Ora leaves undecided
 SOURCE_NAMES = {"ora": "Ora", "cloudflare": "Cloudflare"}
-WEIGHTS = {"discovery": 20, "content": 25, "usability": 35, "security": 10, "payments": 10}
-LAYER_NAMES = {"discovery": "Discoverability", "content": "Readability", "usability": "Usability", "security": "Security & compliance", "payments": "Payments"}
+WEIGHTS = {"discovery": 20, "content": 25, "usability": 35}  # totals are rescaled to /100
+LAYER_NAMES = {"discovery": "Discoverability", "content": "Readability", "usability": "Usability"}
 # This is a product rubric, not a provider-score average or calibrated confidence.
 # (canonical id, title, category, Ora id, Cloudflare id, definition)
 DEFINITIONS = [
@@ -105,9 +105,10 @@ def score_checks(checks, weights=WEIGHTS, layer_names=LAYER_NAMES):
             earned += points
             any_measured = True
         breakdown[category] = {"label": layer_names[category], "points": points, "max_points": weight, "measured": len(valid), "defined": len(rows), "coverage": round(layer_coverage * 100, 1)}
-    total = round(earned, 1) if any_measured else None
+    scale = 100 / sum(weights.values())  # layer weights are relative; the total is always out of 100
+    total = round(earned * scale, 1) if any_measured else None
     return {"total": total, "grade": None if total is None else next(g for threshold, g in [(90, "A"), (80, "B"), (70, "C"), (60, "D"), (0, "F")] if total >= threshold),
-            "coverage": round(coverage, 1), "breakdown": breakdown, "rubric_version": "pickable-0.1",
+            "coverage": round(coverage * scale, 1), "breakdown": breakdown, "rubric_version": "pickable-0.2",
             "label": "Preliminary score", "method": "Layer score = PASS / (PASS + FAIL) × layer weight. Unmeasured layers are null; no free points. Warning/UNKNOWN/N/A are excluded; coverage is shown separately."}
 
 
