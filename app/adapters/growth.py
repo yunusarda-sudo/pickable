@@ -7,6 +7,7 @@ Raw report uses the {"checks": {group: {id: {status, message, details}}}} shape 
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
@@ -29,6 +30,7 @@ FEED_TYPES = ("application/rss+xml", "application/atom+xml")
 FEED_GUESSES = ("feed", "rss.xml", "feed.xml", "feed.rss", "rss")  # tried under the blog, then the site root
 # Calibration knobs: what "recent" and "regular" mean for a marketing blog.
 RECENT_DAYS = 60
+MAX_PARALLEL = 8  # concurrent requests per scan to the scanned site
 CADENCE_DAYS, CADENCE_MIN_POSTS = 90, 3
 
 
@@ -177,6 +179,12 @@ class GrowthAdapter(Adapter):
     def text(self, res):
         return res.body.decode("utf-8", errors="replace")
 
+    def fetch_all(self, urls):
+        """Fetch URLs in parallel: each new TLS connection can cost seconds, so never wait on them one by one."""
+        urls = list(dict.fromkeys(u for u in urls if u))
+        with ThreadPoolExecutor(max_workers=MAX_PARALLEL) as pool:
+            return dict(zip(urls, pool.map(self.get, urls)))
+
     def run(self, domain):
         home = self.get(f"https://{domain}/")
         if not home:
@@ -185,33 +193,35 @@ class GrowthAdapter(Adapter):
         links, feeds = parse_links(self.text(home), base)
         profiles = social_profiles(links)
         blog_url = find_blog(links, base)
-        if blog_url and not feeds and (page := self.get(blog_url)):
-            feeds = parse_links(self.text(page), page.final_url or blog_url)[1]
-        roots = [blog_url.rstrip("/") + "/"] if blog_url else []
-        candidates = feeds or [urljoin(r, g) for r in roots + [urljoin(base, "/")] for g in FEED_GUESSES]
+        same_host = not blog_url or urlsplit(blog_url).hostname == urlsplit(base).hostname
+        # A blog.* subdomain has its own sitemap; on the main site only URLs under the blog path count.
+        sitemap_url = urljoin(base if same_host else blog_url, "/sitemap.xml")
+        roots = ([blog_url.rstrip("/") + "/"] if blog_url else []) + [urljoin(base, "/")]
+        guesses = [] if feeds else [urljoin(r, g) for r in roots for g in FEED_GUESSES]
+        # One parallel wave: blog page (for its declared feed), feed candidates and the sitemap.
+        pages = self.fetch_all(([blog_url] if blog_url and not feeds else []) + feeds + guesses + ([sitemap_url] if blog_url else []))
+        blog_page = pages.get(blog_url)
+        blog_feeds = parse_links(self.text(blog_page), blog_page.final_url or blog_url)[1] if blog_page else []
+        pages.update(self.fetch_all([u for u in blog_feeds if u not in pages]))
         feed_url, dates, dates_source = None, [], None
-        for url in candidates[:8]:
-            res = self.get(url)
+        for url in feeds + blog_feeds + guesses:  # same priority as before: declared feeds first, then guesses
             try:
-                found = feed_dates(self.text(res)) if res else []
+                found = feed_dates(self.text(pages[url])) if pages.get(url) else []
             except ET.ParseError:
                 found = []
             if found:
                 feed_url, dates, dates_source = url, found, "feed"
                 break
         if not dates and blog_url:
-            same_host = urlsplit(blog_url).hostname == urlsplit(base).hostname
-            # A blog.* subdomain has its own sitemap; on the main site only URLs under the blog path count.
-            dates = self.sitemap_dates(base if same_host else blog_url, urlsplit(blog_url).path.rstrip("/") if same_host else "")
-            dates_source = "sitemap"
+            path = urlsplit(blog_url).path.rstrip("/") if same_host else ""
+            dates, dates_source = self.sitemap_dates(pages.get(sitemap_url) or self.get(sitemap_url), path), "sitemap"
         now = datetime.now(timezone.utc)
         act = activity(dates, now) if dates else None
-        return {"scanner": "pickable-growth 0.1", "url": base, "scannedAt": now.isoformat(),
+        return {"scanner": "pickable-growth 0.2", "url": base, "scannedAt": now.isoformat(),
                 "checks": build_checks(profiles, blog_url, feed_url, dates_source if dates else None, act)}
 
-    def sitemap_dates(self, base, blog_path):
+    def sitemap_dates(self, res, blog_path):
         # ponytail: one sitemap level + one blog-ish child sitemap; deeper indexes are skipped
-        res = self.get(urljoin(base, "/sitemap.xml"))
         try:
             kind, rows = sitemap_entries(self.text(res)) if res else ("urlset", [])
             if kind == "index":
