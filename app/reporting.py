@@ -6,13 +6,13 @@ WEIGHTS = {"discovery": 20, "content": 25, "usability": 35, "security": 10, "pay
 LAYER_NAMES = {"discovery": "Keşfedilebilirlik", "content": "Anlaşılabilirlik", "usability": "Kullanılabilirlik", "security": "Güvenlik & uyum", "payments": "Ödeme"}
 # This is a product rubric, not a provider-score average or calibrated confidence.
 DEFINITIONS = [
-    ("discovery.sitemap", "XML sitemap", "discovery", "sitemap", "sitemap", "equivalent", "Sitemap bulunabilirliği; ayrıntılı doğrulama eşikleri kaynaklara göre değişebilir."),
-    ("discovery.link_headers", "HTTP Link header", "discovery", "link-headers-discovery", "linkHeaders", "equivalent", "Makine keşfine yönelik HTTP Link header sinyali."),
-    ("content.llms_txt", "llms.txt", "content", "llms-txt-exists", "llmsTxt", "partial", "Ora varlık ve alternatif yolu; Python kök dosyayı ve H1 başlığını ölçer."),
-    ("content.markdown", "Markdown sunumu", "content", "markdown-negotiation-vary", "markdownNegotiation", "partial", "Ana sayfa negotiation koşulları benzer; fallback ve içerik eşikleri farklıdır."),
-    ("auth.oauth_metadata", "OAuth metadata", "usability", "mcp-oauth-metadata", "oauthDiscovery", "partial", "Ora MCP endpoint metadata'sını; Python domain kökündeki OAuth/OIDC dosyalarını ölçer."),
-    ("auth.protected_resource", "Protected Resource", "usability", "oauth-protected-resource", "oauthProtectedResource", "partial", "Endpoint ve metadata doğrulama kapsamı farklı olabilir; giriş akışı test edilmez."),
-    ("integration.mcp_card", "MCP server card", "usability", "mcp-server-card", "mcpServerCard", "partial", "Aranan yollar ve şema koşulları farklı; Python initialize fallback'i de kullanabilir."),
+    ("discovery.sitemap", "XML sitemap", "discovery", "sitemap", "Sitemap bulunabilirliği."),
+    ("discovery.link_headers", "HTTP Link header", "discovery", "link-headers-discovery", "Makine keşfine yönelik HTTP Link header sinyali."),
+    ("content.llms_txt", "llms.txt", "content", "llms-txt-exists", "llms.txt dosyasının varlığı (kök veya alternatif yol)."),
+    ("content.markdown", "Markdown sunumu", "content", "markdown-negotiation-vary", "Ana sayfada Markdown negotiation ve Vary davranışı."),
+    ("auth.oauth_metadata", "OAuth metadata", "usability", "mcp-oauth-metadata", "MCP endpoint'inin OAuth metadata'sı."),
+    ("auth.protected_resource", "Protected Resource", "usability", "oauth-protected-resource", "Protected Resource metadata'sı; giriş akışı test edilmez."),
+    ("integration.mcp_card", "MCP server card", "usability", "mcp-server-card", "MCP server card keşfi."),
 ]
 NORMALIZED = {"pass": "PASS", "fail": "FAIL", "warn": "WARNING", "warning": "WARNING", "na": "NOT_APPLICABLE", "skip": "NOT_APPLICABLE", "not_applicable": "NOT_APPLICABLE"}
 
@@ -33,7 +33,7 @@ def report_from_job(job, source_runs):
     sources = {}
     for run in source_runs:
         source = run.get("source_id")
-        if source not in ("ora", "agentready_oss"):
+        if source != "ora":
             continue
         raw, error = run.get("raw_report"), run.get("error")
         if isinstance(raw, str):
@@ -53,34 +53,18 @@ def report_from_job(job, source_runs):
     return build_report(job["domain"], sources)
 
 
-def flatten(source, raw):
-    if not isinstance(raw, dict):
-        return {}
-    if source == "ora":
-        layers = raw.get("layers")
-        if not isinstance(layers, list):
-            return {}
-        result = {}
-        for layer in layers:
-            if not isinstance(layer, dict):
-                continue
-            checks = layer.get("checks")
-            if not isinstance(checks, list):
-                continue
-            for c in checks:
-                if isinstance(c, dict) and isinstance(c.get("id"), str):
-                    result[c["id"]] = c
-        return result
-    groups = raw.get("checks")
-    if not isinstance(groups, dict):
+def flatten(raw):
+    layers = raw.get("layers") if isinstance(raw, dict) else None
+    if not isinstance(layers, list):
         return {}
     result = {}
-    for group in groups.values():
-        if not isinstance(group, dict):
+    for layer in layers:
+        checks = layer.get("checks") if isinstance(layer, dict) else None
+        if not isinstance(checks, list):
             continue
-        for cid, c in group.items():
-            if isinstance(c, dict):
-                result[cid] = c
+        for c in checks:
+            if isinstance(c, dict) and isinstance(c.get("id"), str):
+                result[c["id"]] = c
     return result
 
 
@@ -91,19 +75,9 @@ def observation(cid, rows, envelope):
             "raw": raw, "observed_at": envelope.get("observed_at"), "attribution": "source_reported"}
 
 
-def compare(match_type, observations):
-    statuses = [v["status"] for v in observations.values()]
-    valid = [s for s in statuses if s in ("PASS", "FAIL")]
-    if match_type != "equivalent":
-        return "UNKNOWN", "Kısmi eşleşme: sonuçlar ortak doğrulama sayılmadı. Puan girdisi yalnız Python kontrolüdür."
-    if len(set(valid)) == 2:
-        return "DIFFERENT", "Kaynaklar farklı sonuç bildirdi. Zaman, yol ve koşullar eşitliği kanıtlanmadı; gerçek çelişki iddiası yok."
-    if len(valid) == 2:
-        return valid[0], "İki kaynak aynı yönde sonuç bildirdi. Koşul eşitliği ve bağımsız doğrulama garanti edilmez."
-    if len(valid) == 1:
-        return "UNKNOWN", "Yalnız bir kaynak kesin sonuç bildirdi; ortak sonuç yok. Puan bu tek kaynak ölçümüne dayanır."
-    return "UNKNOWN", "Kesin PASS/FAIL kanıtı yok. Uyarı, N/A ve erişim hataları puana dahil edilmedi."
 
+REASONS = {"PASS": "Ora kesin sonuç bildirdi.", "FAIL": "Ora kesin sonuç bildirdi."}
+NO_EVIDENCE = "Kesin PASS/FAIL kanıtı yok. Uyarı, N/A ve erişim hataları puana dahil edilmedi."
 
 def score_checks(checks):
     breakdown, earned, coverage, any_measured = {}, 0, 0, False
@@ -120,35 +94,28 @@ def score_checks(checks):
     total = round(earned, 1) if any_measured else None
     return {"total": total, "grade": None if total is None else next(g for threshold, g in [(90, "A"), (80, "B"), (70, "C"), (60, "D"), (0, "F")] if total >= threshold),
             "coverage": round(coverage, 1), "breakdown": breakdown, "rubric_version": "pickable-0.1",
-            "label": "Ön skor", "method": "Katman puanı = PASS / (PASS + FAIL) × katman ağırlığı. Ölçülmeyen katman null; ücretsiz puan yok. Kısmi eşleşmelerde yalnız Python kontrolü puan girdisidir. Uyarı/UNKNOWN/N/A dışlanır; kapsam ayrıca gösterilir."}
+            "label": "Ön skor", "method": "Katman puanı = PASS / (PASS + FAIL) × katman ağırlığı. Ölçülmeyen katman null; ücretsiz puan yok. Uyarı/UNKNOWN/N/A dışlanır; kapsam ayrıca gösterilir."}
 
 
 def build_report(domain, sources):
     envelopes = {}
-    for source in ("ora", "agentready_oss"):
+    for source in ("ora",):
         envelope = dict(sources.get(source) or {"status": "unavailable", "raw": None})
         if not isinstance(envelope.get("raw"), dict):
             envelope["raw"] = None
         envelope["status"] = text_value(envelope.get("status")) or "unavailable"
         envelope["observed_at"] = text_value((envelope.get("raw") or {}).get("scannedAt")) or text_value(envelope.get("observed_at"))
         envelopes[source] = envelope
-    flat = {s: flatten(s, e.get("raw") or {}) for s, e in envelopes.items()}
+    flat = {s: flatten(e.get("raw")) for s, e in envelopes.items()}
     checks, mapped = [], {s: set() for s in envelopes}
-    for cid, title, category, ora_id, oss_id, match_type, definition in DEFINITIONS:
-        observations = {s: observation(native_id, flat[s], envelopes[s]) for s, native_id in (("ora", ora_id), ("agentready_oss", oss_id))}
+    for cid, title, category, ora_id, definition in DEFINITIONS:
+        obs = observation(ora_id, flat["ora"], envelopes["ora"])
         mapped["ora"].add(ora_id)
-        mapped["agentready_oss"].add(oss_id)
-        combined, reason = compare(match_type, observations)
-        primary = observations["agentready_oss"]["status"]
-        basis = "agentready_oss"
-        if match_type == "equivalent":
-            if combined == "DIFFERENT":
-                primary, basis = "UNKNOWN", None
-            elif primary not in ("PASS", "FAIL") and observations["ora"]["status"] in ("PASS", "FAIL"):
-                primary, basis = observations["ora"]["status"], "ora"
-        checks.append({"check_id": cid, "title": title, "category": category, "match_type": match_type,
-                       "measurement_definition": definition, "sources": observations, "combined_status": combined,
-                       "scoring_status": primary, "scoring_source": basis, "reason": reason, "conditions_verified": False})
+        status = obs["status"]
+        scored = status in ("PASS", "FAIL")
+        checks.append({"check_id": cid, "title": title, "category": category,
+                       "measurement_definition": definition, "sources": {"ora": obs}, "combined_status": status if scored else "UNKNOWN",
+                       "scoring_status": status, "scoring_source": "ora" if scored else None, "reason": REASONS.get(status, NO_EVIDENCE)})
     specific = [{"source": s, "source_check_id": cid, "raw": raw} for s, rows in flat.items() for cid, raw in rows.items() if cid not in mapped[s]]
     summaries = []
     for source, envelope in envelopes.items():
@@ -163,5 +130,4 @@ def build_report(domain, sources):
         recommendations = []
     return {"schema_version": "0.1", "mapping_version": "2026-10-10.1", "domain": domain, "scanned_at": now(),
             "sources": summaries, "checks": checks, "score": score_checks(checks),
-            "divergent_findings": [c for c in checks if len({v["status"] for v in c["sources"].values()} & {"PASS", "FAIL"}) == 2],
             "source_specific": specific, "recommendations": recommendations}

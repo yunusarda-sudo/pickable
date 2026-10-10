@@ -1,34 +1,27 @@
 import json
 import unittest
 from app.reporting import build_report, report_from_job
-from test_core import sources, ora_checks, oss_checks, ORA_IDS, OSS_IDS
+from test_core import sources, ora_checks, ORA_IDS
 
 
 class ScoreTests(unittest.TestCase):
     def test_all_defined_checks_pass_without_credit_for_unmeasured_layers(self):
         report = build_report("example.com", sources(
-            ora_checks({i: "pass" for i in ORA_IDS.values()}),
-            oss_checks({i: "pass" for i in OSS_IDS.values()})))
+            ora_checks({i: "pass" for i in ORA_IDS.values()})))
         self.assertEqual(report["score"]["total"], 80)
         self.assertEqual(report["score"]["coverage"], 80)
         self.assertIsNone(report["score"]["breakdown"]["security"]["points"])
-        self.assertEqual(report["checks"][2]["scoring_source"], "agentready_oss")
+        self.assertEqual(report["checks"][2]["scoring_source"], "ora")
 
     def test_all_fail_is_measured_zero_not_missing(self):
-        report = build_report("example.com", sources(oss=oss_checks({i: "fail" for i in OSS_IDS.values()})))
+        report = build_report("example.com", sources(ora_checks({i: "fail" for i in ORA_IDS.values()})))
         self.assertEqual(report["score"]["total"], 0)
         self.assertEqual(report["score"]["coverage"], 80)
 
     def test_unknown_excluded_from_layer_denominator_but_reduces_coverage(self):
-        report = build_report("example.com", sources(oss=oss_checks({"sitemap": "pass", "linkHeaders": "error"})))
+        report = build_report("example.com", sources(ora_checks({"sitemap": "pass", "link-headers-discovery": "error"})))
         self.assertEqual(report["score"]["breakdown"]["discovery"]["points"], 20)
         self.assertEqual(report["score"]["coverage"], 10)
-
-    def test_disagreement_is_preserved_for_partial_match_without_consensus(self):
-        report = build_report("example.com", sources(ora_checks({"llms-txt-exists": "pass"}), oss_checks({"llmsTxt": "fail"})))
-        self.assertEqual(len(report["divergent_findings"]), 1)
-        self.assertEqual(report["divergent_findings"][0]["combined_status"], "UNKNOWN")
-        self.assertEqual(report["divergent_findings"][0]["scoring_status"], "FAIL")
 
     def test_top_fixes_order_and_original_status_are_not_changed(self):
         raw = ora_checks({"sitemap": "warning"})
@@ -44,12 +37,10 @@ class ScoreTests(unittest.TestCase):
         report = report_from_job({"domain": "example.com"}, [{"source_id": "ora", "status": "completed", "raw_report": json.dumps(raw), "finished_at": "2026-10-10T12:00:00Z"}])
         self.assertEqual(report["checks"][0]["sources"]["ora"]["observed_at"], "2025-01-01T00:00:00Z")
 
-    def test_malformed_raw_report_preserves_other_provider(self):
+    def test_malformed_raw_report_is_an_error_not_a_crash(self):
         report = report_from_job({"domain": "example.com"}, [
-            {"source_id": "ora", "status": "failed", "raw_report": "{bad"},
-            {"source_id": "agentready_oss", "status": "completed", "raw_report": oss_checks({"sitemap": "pass"})},
-        ])
-        self.assertEqual(report["checks"][0]["sources"]["agentready_oss"]["status"], "PASS")
+            {"source_id": "ora", "status": "failed", "raw_report": "{bad"}])
+        self.assertIsNone(report["score"]["total"])
         self.assertIsNotNone(report["sources"][0]["error"])
 
     def test_malformed_provider_metadata_is_safe_without_changing_raw(self):

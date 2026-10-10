@@ -16,24 +16,8 @@ ORA = {
     ]}],
     "topFixes": [{"id": "link-headers-discovery", "recommendation": "TEST: Link header ekleyin."}],
 }
-OSS = {
-    "scanner": "agent_ready_scan.py 1.0.0", "level": 1, "levelName": "Basic Web Presence",
-    "scannedAt": "2026-10-10T12:00:01Z", "checks": {
-        "discoverability": {
-            "sitemap": {"title": "XML sitemap", "status": "pass", "message": "TEST: Valid sitemap", "evidence": [{"label": "GET /sitemap.xml", "outcome": "positive", "summary": "HTTP 200"}]},
-            "linkHeaders": {"title": "Link headers", "status": "pass", "message": "TEST: Different observation", "details": {"header": "</sitemap.xml>; rel=sitemap"}},
-        },
-        "extended": {"llmsTxt": {"title": "llms.txt", "status": "fail", "message": "TEST: No root /llms.txt"}},
-        "contentAccessibility": {"markdownNegotiation": {"title": "Markdown", "status": "warn", "message": "TEST: Explicit markdown route only"}},
-        "discovery": {
-            "oauthDiscovery": {"title": "OAuth metadata", "status": "fail", "message": "TEST: No root metadata"},
-            "oauthProtectedResource": {"title": "Protected resource", "status": "skip", "message": "TEST: Not applicable"},
-            "mcpServerCard": {"title": "Server card", "status": "error", "message": "TEST: Request timeout"},
-        },
-    },
-}
 
 
 def fixture_runs():
     return [{"source_id": source, "status": "completed", "finished_at": raw["scannedAt"], "raw_report": deepcopy(raw)}
-            for source, raw in (("ora", ORA), ("agentready_oss", OSS))]
+            for source, raw in (("ora", ORA),)]

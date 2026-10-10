@@ -38,7 +38,7 @@ class UIPreviewTests(unittest.TestCase):
         job = json.loads(raw)
         self.assertEqual(job["status"], "completed")
         self.assertEqual(len(job["report"]["checks"]), 7)
-        self.assertEqual(job["report"]["checks"][1]["combined_status"], "DIFFERENT")
+        self.assertEqual(job["report"]["checks"][1]["combined_status"], "FAIL")
         _, raw, headers = self.request(f"/api/scans/{job_id}/raw/ora")
         self.assertIn("attachment", headers["Content-Disposition"])
         self.assertEqual(json.loads(raw)["layers"][0]["checks"][1]["status"], "fail")

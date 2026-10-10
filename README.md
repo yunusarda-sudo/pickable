@@ -2,7 +2,7 @@
 
 Multi-source Agent Readiness Reporting backend core in pure Python standard library (3.12+).
 
-Probes domain readiness for AI agents across independent sources (Ora API and Python AgentReady scanner), stores verbatim raw reports and normalized checks in SQLite, and provides resilient SSRF protection and parallel execution.
+Probes domain readiness for AI agents via the Ora API, stores verbatim raw reports and normalized checks in SQLite, and provides resilient SSRF protection and parallel execution.
 
 ---
 
@@ -19,8 +19,7 @@ Probes domain readiness for AI agents across independent sources (Ora API and Py
   - Automatically recovers from process crashes on startup by marking `pending`/`running` jobs as `interrupted`.
   - Persists verbatim raw JSON reports alongside normalized granular checks.
 - **Fault-Tolerant Parallel Orchestration (`app/orchestrator.py`)**:
-  - Runs Ora and AgentReady OSS scanners concurrently.
-  - Fault isolation: one source failure or timeout never cancels or pollutes the other source.
+  - Runs source adapters (currently Ora) with per-source fault isolation.
 - **Non-Destructive Status Normalization**:
   - Preserves `UNKNOWN`, `NA`, and `WARNING` states without coercing them to `FAIL`.
 
@@ -38,7 +37,6 @@ app/
     __init__.py
     base.py              # Adapter ABC & CheckRecord dataclass
     ora.py               # Ora API adapter (with rate limiter & polling)
-    agentready_oss.py    # Isolated subprocess runner for Python AgentReady
   orchestrator.py        # Concurrent adapter orchestration & fault isolation
 tests/
   test_safe_fetch.py
@@ -48,10 +46,8 @@ tests/
   test_core.py
   fixtures/
     ora_sample.json
-    oss_sample.json
 examples/
   randevuo-ora.json      # Sample live Ora output
-  randevuo-oss.json      # Sample live AgentReady OSS output
 docs/
   DECISIONS.md           # Architecture decision records
 run.py                   # CLI entry point

@@ -14,22 +14,22 @@ python3 tests/ui_preview.py --port 8765
 
 Ardından <http://127.0.0.1:8765> adresini açın. Açılış ekranında boş domain
 alanı bulunur; analiz başlatılınca yükleme ekranı, ardından rapor gösterilir.
-Raporda özet, sonraki adımlar, katmanlara ayrılmış kontroller, karşılaştırma,
-filtreleme, yan yana ham kanıt ve JSON indirme denenebilir. Oturum içi rapor geçmişi üst menüdeki düğmeden
+Raporda özet, sonraki adımlar, katmanlara ayrılmış kontroller, kontrol tablosu,
+filtreleme, ham kanıt ve JSON indirme denenebilir. Oturum içi rapor geçmişi üst menüdeki düğmeden
 açılan pencerededir; yeni analiz başlatmak açılış ekranına geri döndürür.
 
 **Bu sunucu yalnız sentetik test verisi kullanır; girilen domaini taramaz.**
 Ekranda TEST MODU etiketi gösterilir. Geçmiş bellektedir, yeniden başlatılınca
-silinir; oturum 30 raporla sınırlıdır. Bu önizlemenin çalışması gerçek Ora veya
-Python AgentReady entegrasyonunun çalıştığını kanıtlamaz.
+silinir; oturum 30 raporla sınırlıdır. Bu önizlemenin çalışması gerçek Ora
+entegrasyonunun çalıştığını kanıtlamaz.
 
 ## Raporun görsel düzeni
 
 Rapor önce domaini ve analiz zamanını, ardından büyük ön skor, ölçüm kapsamı,
 genel değerlendirme ve kontrol sayılarını gösterir. Katman puanlarının altında
 iki bölüm bulunur: eksik bildirilen kontroller için sonraki adımlar ve
-katmanlara ayrılmış, ayrıntıları açılabilen kontroller. Kaynak skorları, yöntem,
-karşılaştırma tablosu, ham kanıtlar ve orijinal rapor indirmeleri
+katmanlara ayrılmış, ayrıntıları açılabilen kontroller. Kaynak skoru, yöntem,
+kontrol tablosu, ham kanıtlar ve orijinal rapor indirmeleri
 **Kaynaklar & yöntem** bölümündedir. Böylece teknik ayrıntılar korunurken
 raporun ilk görünümünde sonuç ve yapılabilecekler öne çıkar.
 
@@ -63,12 +63,8 @@ UNKNOWN, uyarı ve uygulanamaz sonuçlar paydadan çıkarılır. Ölçülmeyen k
 ödemeyi puanlamaz: tanımlı kontrollerin tümü geçse de sonuç 80/100 ve %80 kapsamdır.
 Bu nedenle arayüz sonucu **ön skor** olarak adlandırır.
 
-Eşdeğer olarak eşlenen iki kesin sonuç aynıysa ortak durum PASS/FAIL olur;
-ayrışıyorsa DIFFERENT olur ve puana katılmaz. Tek kesin kaynakta ortak durum
-UNKNOWN kalır, fakat mevcut kaynak ölçümü puana girebilir. Kısmi eşleşmeler
-ortak doğrulama sayılmaz; puan girdisi yalnız tanımlı Python ölçütüdür. Her
-satırda puanın hangi kaynağa dayandığı görünür. Koşul eşitliği veya bağımsız
-olarak doğrulama iddia edilmez.
+Tek kaynak Ora'dır; her kontrolün puan girdisi Ora'nın bildirdiği PASS/FAIL'dir.
+Bağımsız doğrulama iddia edilmez.
 
 ## Kaynakların korunması ve entegrasyon
 

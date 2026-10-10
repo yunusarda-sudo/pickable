@@ -14,7 +14,7 @@ Ortak dosyaları değiştirmeden önce güncel hâlini okuyun.
 - `GET /api/scans/:id` → `{ "id":"...", "domain":"...", "status":"running|completed|interrupted|failed", "sources":[], "report": null|UnifiedReport }`
 - `GET /api/scans/:id/report` → rapor JSON'u (download).
 - `GET /api/scans/:id/raw/:source` → değiştirilmemiş sağlayıcı JSON'u (download).
-- Kaynak id'leri: `ora`, `agentready_oss`. Kaynak durumları:
+- Kaynak id'si: `ora`. Kaynak durumları:
   `pending|running|completed|partial|unavailable|failed|timeout|interrupted`.
 - Origin/Host doğrulama ve tarama tokenı backend sorumluluğudur. CORS açılmamalı.
 
@@ -32,17 +32,13 @@ Alternatif doğrudan arayüz:
 from app.reporting import build_report
 report = build_report("randevuo.com.tr", {
   "ora": {"status": "completed", "raw": ora_json, "observed_at": "ISO"},
-  "agentready_oss": {"status": "completed", "raw": oss_json, "observed_at": "ISO"},
 })
 ```
 
-## Skor ve eşleşme
+## Skor
 
-- Sözlük 7 kontrol içerir; eşleşme ve tek kaynağın puan girdisi ayrı alanlardır.
-- `combined_status`: eşdeğer iki kesin sonuçta PASS/FAIL, ayrışmada DIFFERENT;
-  tek kaynak veya kısmi eşleşmede UNKNOWN. Bu bağımsız doğrulama iddiası değildir.
-- `scoring_status`: kısmi eşleşmede yalnız Python'un tanımlı ölçütü.
-  Eşdeğer çiftin farklı sonucunda UNKNOWN. Eşdeğer tek kaynağın PASS/FAIL'i kullanılabilir.
+- Sözlük 7 Ora kontrolü içerir. Tek kaynak Ora'dır.
+- `scoring_status`: Ora'nın normalize edilmiş durumu. `combined_status`: PASS/FAIL ise aynısı, değilse UNKNOWN.
 - Payda yalnız PASS+FAIL; uyarı, UNKNOWN ve N/A dışarıda. Ölçülmeyen katman null.
 - Ağırlıklar 20/25/35/10/10. İlk sürüm güvenlik ve ödemeyi puanlamaz.
   Tanımlı kontrollerin tümü geçtiğinde ön skor 80/100, kapsam %80 olur;

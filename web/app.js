@@ -1,8 +1,7 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
 const state = { report: null, jobId: null, token: null, generation: 0, config: null };
-const nativeLabels = { PASS: "Geçti", FAIL: "Eksik", WARNING: "Uyarı", UNKNOWN: "Belirsiz", NOT_APPLICABLE: "Uygulanmaz", DIFFERENT: "Farklı" };
-const matchLabels = { equivalent: "Benzer ölçüt", partial: "Kısmi eşleşme", related: "İlişkili", not_comparable: "Karşılaştırılamıyor" };
+const nativeLabels = { PASS: "Geçti", FAIL: "Eksik", WARNING: "Uyarı", UNKNOWN: "Belirsiz", NOT_APPLICABLE: "Uygulanmaz" };
 const sourceLabels = { completed: "Tamamlandı", partial: "Kısmi", running: "Çalışıyor", pending: "Bekliyor", unavailable: "Erişilemedi", failed: "Hata", timeout: "Zaman aşımı", interrupted: "Kesildi" };
 
 function element(tag, className, text) {
@@ -35,7 +34,7 @@ function returnToLanding() {
 function clearReport() {
   state.report = null; state.jobId = null;
   $("results").hidden = true; $("empty-state").hidden = false;
-  for (const id of ["download-report", "ora-raw", "oss-raw"]) $(id).removeAttribute("href");
+  for (const id of ["download-report", "ora-raw"]) $(id).removeAttribute("href");
   $("evidence-dialog").close();
   updateSources();
 }
@@ -53,7 +52,7 @@ async function api(path, options = {}) {
 
 function updateSources(sources = []) {
   if (!Array.isArray(sources)) sources = sources && typeof sources === "object" ? Object.entries(sources).map(([id, value]) => ({ ...value, id })) : [];
-  for (const id of ["ora", "agentready_oss"]) {
+  for (const id of ["ora"]) {
     const source = sources.find((s) => s && (s.id || s.source_id) === id);
     const status = scalar(source?.status, "pending");
     $(id + "-state").textContent = Object.hasOwn(sourceLabels, status) ? sourceLabels[status] : status;
@@ -71,7 +70,7 @@ function updateSources(sources = []) {
 function openEvidence(check) {
   $("evidence-title").textContent = check.title;
   $("evidence-reason").textContent = `${check.measurement_definition} ${check.reason}`;
-  for (const [id, target] of [["ora", "ora-evidence"], ["agentready_oss", "oss-evidence"]]) {
+  for (const [id, target] of [["ora", "ora-evidence"]]) {
     const observation = check.sources[id];
     $(target).textContent = observation?.raw ? JSON.stringify({ source_check_id: observation.source_check_id, observed_at: observation.observed_at, raw: observation.raw }, null, 2) : "Bu kaynaktan kontrol sonucu alınamadı.";
   }
@@ -83,7 +82,6 @@ function renderChecks() {
   const filter = $("filter").value;
   const checks = (state.report?.checks || []).filter((check) => {
     if (filter === "all") return true;
-    if (filter === "different") return new Set(Object.values(check.sources).map((s) => s.status).filter((s) => ["PASS", "FAIL"].includes(s))).size === 2;
     if (filter === "pass") return check.combined_status === "PASS";
     return check.combined_status === "UNKNOWN";
   });
@@ -91,19 +89,19 @@ function renderChecks() {
     const tr = element("tr");
     const title = element("td"); const button = element("button", "check-button", check.title);
     button.addEventListener("click", () => openEvidence(check));
-    title.append(button, element("small", "", matchLabels[check.match_type] || check.match_type));
+    title.append(button);
     tr.append(title);
-    for (const source of ["ora", "agentready_oss"]) {
+    for (const source of ["ora"]) {
       const td = element("td"); const observation = check.sources[source];
       td.append(badge(observation?.status || "UNKNOWN"));
       if (observation?.native_status !== null && observation?.native_status !== undefined) td.append(element("small", "", `Kaynak: ${display(observation.native_status)}`));
       tr.append(td);
     }
     const score = element("td"); score.append(badge(check.scoring_status));
-    score.append(element("small", "", check.scoring_source === "agentready_oss" ? "Python ölçütü" : check.scoring_source === "ora" ? "Ora ölçütü" : "Puana dahil değil"));
+    score.append(element("small", "", check.scoring_source === "ora" ? "Ora ölçütü" : "Puana dahil değil"));
     tr.append(score, element("td", "", check.reason)); tbody.append(tr);
   }
-  if (!checks.length) { const td = element("td", "", "Bu filtreye uygun kontrol yok."); td.colSpan = 5; const tr = element("tr"); tr.append(td); tbody.append(tr); }
+  if (!checks.length) { const td = element("td", "", "Bu filtreye uygun kontrol yok."); td.colSpan = 4; const tr = element("tr"); tr.append(td); tbody.append(tr); }
 }
 
 const categoryCopy = {
@@ -128,7 +126,6 @@ function modelReport(report) {
     passed: checks.filter(c => c.scoring_status === "PASS").length,
     failed: checks.filter(c => c.scoring_status === "FAIL").length,
     uncertain: checks.filter(c => !["PASS", "FAIL"].includes(c.scoring_status)).length,
-    different: checks.filter(c => new Set(Object.values(c.sources || {}).map(s => s?.status).filter(s => ["PASS", "FAIL"].includes(s))).size === 2).length,
     actions: checks.filter(c => c.scoring_status === "FAIL"),
   };
 }
@@ -147,7 +144,7 @@ function renderReportExperience(report) {
   $("report-headline").textContent = report.score.total === null ? "Daha fazla kanıta ihtiyaç var." : model.failed ? "Geliştirilecek alanlar var." : model.uncertain ? "İyi sinyaller, eksik bir resim." : "Ölçülen kontroller olumlu.";
   $("report-summary").textContent = reportSummary(report);
   $("report-counts").replaceChildren();
-  for (const [count, label, tone] of [[model.passed,"Geçti","positive"],[model.failed,"Eksik","negative"],[model.uncertain,"Puan dışı","neutral"],[model.different,"Kaynak farkı","amber"]]) {
+  for (const [count, label, tone] of [[model.passed,"Geçti","positive"],[model.failed,"Eksik","negative"],[model.uncertain,"Puan dışı","neutral"]]) {
     const item = element("div", "count-item " + tone);
     item.append(element("strong", "", count), element("span", "", label)); $("report-counts").append(item);
   }
@@ -157,7 +154,7 @@ function renderReportExperience(report) {
     const card = element("article", "action-card");
     card.append(element("span", "action-number", String(index + 1).padStart(2,"0")), element("h3", "", check.title));
     card.append(element("p", "", checkGuidance[check.check_id]?.[1] || "Kaynağın bildirdiği eksikliği kanıt ayrıntılarıyla birlikte incele."));
-    card.append(element("small", "action-basis", check.scoring_source === "ora" ? "Ora ölçütüne göre · Pickable önerisi" : "Python ölçütüne göre · Pickable önerisi"), evidenceButton(check));
+    card.append(element("small", "action-basis", "Ora ölçütüne göre · Pickable önerisi"), evidenceButton(check));
     $("action-list").append(card);
   }
   if (!model.actions.length) $("action-list").append(element("p", "report-empty", model.uncertain ? "Kesin eksik sonucu yok. Puan dışı kontrolleri inceleyerek ölçüm boşluklarını görebilirsin." : "Ölçülen kontrollerden bir eksik listesi çıkmadı."));
@@ -176,7 +173,7 @@ function renderReportExperience(report) {
       const body = element("div", "finding-body");
       body.append(element("p", "finding-purpose", checkGuidance[check.check_id]?.[0] || check.measurement_definition));
       const observations = element("div", "observation-grid");
-      for (const [id, label] of [["ora","Ora"],["agentready_oss","AgentReady"]]) {
+      for (const [id, label] of [["ora","Ora"]]) {
         const observation = check.sources?.[id]; const raw = observation?.raw || {};
         const block = element("div", "observation-card");
         const head = element("div", "observation-heading"); head.append(element("strong", "", label),badge(observation?.status));
@@ -210,7 +207,7 @@ function renderReport(report) {
   $("specific-list").replaceChildren();
   for (const item of specific) {
     const row = element("details", "specific-row"); const raw = item.raw || {};
-    row.append(element("summary", "", `${item.source === "ora" ? "Ora" : "AgentReady"} · ${display(raw.name) || display(raw.title) || scalar(item.source_check_id)} · ${display(raw.status, "unknown")}`), element("pre", "", JSON.stringify(raw, null, 2)));
+    row.append(element("summary", "", `Ora · ${display(raw.name) || display(raw.title) || scalar(item.source_check_id)} · ${display(raw.status, "unknown")}`), element("pre", "", JSON.stringify(raw, null, 2)));
     $("specific-list").append(row);
   }
   $("recommendations").replaceChildren();
@@ -218,7 +215,7 @@ function renderReport(report) {
   for (const fix of recommendations) $("recommendations").append(element("pre", "", typeof fix === "string" ? fix : JSON.stringify(fix, null, 2)));
   if (!recommendations.length) $("recommendations").append(element("p", "", "Ora bu raporda öneri listesi sunmadı. Kontrol bazlı açıklamalar kanıt penceresinde bulunur."));
   const root = `/api/scans/${encodeURIComponent(state.jobId)}`;
-  $("download-report").href = root + "/report"; $("ora-raw").href = root + "/raw/ora"; $("oss-raw").href = root + "/raw/agentready_oss";
+  $("download-report").href = root + "/report"; $("ora-raw").href = root + "/raw/ora";
   renderReportExperience(report);
   setView("report");
 }

@@ -10,7 +10,6 @@ import asyncio
 import json
 import sys
 
-from app.adapters.agentready_oss import AgentReadyOSSAdapter
 from app.adapters.ora import OraAdapter
 from app.config import Config
 from app.orchestrator import Orchestrator
@@ -26,8 +25,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
 
     storage = Storage(Config.DB_PATH)
     ora = OraAdapter()
-    oss = AgentReadyOSSAdapter()
-    orchestrator = Orchestrator(adapters=[ora, oss], storage=storage)
+    orchestrator = Orchestrator(adapters=[ora], storage=storage)
 
     job_id = asyncio.run(orchestrator.run_scan(domain))
     job = storage.get_job(job_id)

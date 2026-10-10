@@ -59,7 +59,7 @@ class TestOrchestrator(unittest.IsolatedAsyncioTestCase):
         ad1 = SlowAdapter(delay=0.2)
         ad1.source_id = "ora"
         ad2 = SlowAdapter(delay=0.2)
-        ad2.source_id = "agentready_oss"
+        ad2.source_id = "mock_b"
 
         orch = Orchestrator(adapters=[ad1, ad2], storage=self.storage)
         t0 = time.perf_counter()
@@ -80,7 +80,7 @@ class TestOrchestrator(unittest.IsolatedAsyncioTestCase):
         ad1 = SlowAdapter(delay=0.05, should_fail=False)
         ad1.source_id = "ora"
         ad2 = SlowAdapter(delay=0.05, should_fail=True)
-        ad2.source_id = "agentready_oss"
+        ad2.source_id = "mock_b"
 
         orch = Orchestrator(adapters=[ad1, ad2], storage=self.storage)
         job_id = await orch.run_scan("test.com")
@@ -91,8 +91,8 @@ class TestOrchestrator(unittest.IsolatedAsyncioTestCase):
 
         runs = {r["source_id"]: r for r in self.storage.get_source_runs(job_id)}
         self.assertEqual(runs["ora"]["status"], "completed")
-        self.assertEqual(runs["agentready_oss"]["status"], "failed")
-        self.assertIn("Adapter crashed", runs["agentready_oss"]["error"])
+        self.assertEqual(runs["mock_b"]["status"], "failed")
+        self.assertIn("Adapter crashed", runs["mock_b"]["error"])
 
         checks = self.storage.get_checks(job_id)
         self.assertEqual(len(checks), 1)
@@ -103,21 +103,21 @@ class TestOrchestrator(unittest.IsolatedAsyncioTestCase):
         ad1 = SlowAdapter(delay=0.05, should_fail=False)
         ad1.source_id = "ora"
         ad2 = SlowAdapter(delay=0.05, timeout=True)
-        ad2.source_id = "agentready_oss"
+        ad2.source_id = "mock_b"
 
         orch = Orchestrator(adapters=[ad1, ad2], storage=self.storage)
         job_id = await orch.run_scan("test.com")
 
         runs = {r["source_id"]: r for r in self.storage.get_source_runs(job_id)}
         self.assertEqual(runs["ora"]["status"], "completed")
-        self.assertEqual(runs["agentready_oss"]["status"], "timeout")
+        self.assertEqual(runs["mock_b"]["status"], "timeout")
 
     async def test_both_sources_fail_returns_partial(self):
         """Her iki adapter da hata verse bile job sonlanir ve hata durumlari kaydedilir"""
         ad1 = SlowAdapter(delay=0.05, should_fail=True)
         ad1.source_id = "ora"
         ad2 = SlowAdapter(delay=0.05, timeout=True)
-        ad2.source_id = "agentready_oss"
+        ad2.source_id = "mock_b"
 
         orch = Orchestrator(adapters=[ad1, ad2], storage=self.storage)
         job_id = await orch.run_scan("test.com")
@@ -127,7 +127,7 @@ class TestOrchestrator(unittest.IsolatedAsyncioTestCase):
 
         runs = {r["source_id"]: r for r in self.storage.get_source_runs(job_id)}
         self.assertEqual(runs["ora"]["status"], "failed")
-        self.assertEqual(runs["agentready_oss"]["status"], "timeout")
+        self.assertEqual(runs["mock_b"]["status"], "timeout")
 
 
 if __name__ == "__main__":

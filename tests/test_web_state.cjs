@@ -71,7 +71,7 @@ test('non-string native fields are displayed as JSON without coercion or evidenc
   const ui = setup(() => ({}));
   const bad = report();
   const native = {toString: 0};
-  bad.checks = [{title:'Native status', match_type:'partial', sources:{ora:{status:'UNKNOWN', native_status:native}, agentready_oss:{status:'UNKNOWN'}}, scoring_status:'UNKNOWN', reason:'Test'}];
+  bad.checks = [{title:'Native status', sources:{ora:{status:'UNKNOWN', native_status:native}}, scoring_status:'UNKNOWN', reason:'Test'}];
   bad.source_specific = [{source:'ora', source_check_id:'extra', raw:{name:native, title:native, status:native}}];
   bad.recommendations = [{recommendation:native}];
   const before = JSON.stringify(bad);
@@ -130,7 +130,7 @@ test('new analysis invalidates in-flight requests and returns to the clean landi
   assert.equal(ui.get('report-view').hidden, true);
   assert.equal(ui.state.report, null);
   assert.equal(ui.state.jobId, null);
-  for (const id of ['download-report', 'ora-raw', 'oss-raw']) assert.equal(ui.get(id).href, undefined);
+  for (const id of ['download-report', 'ora-raw']) assert.equal(ui.get(id).href, undefined);
   assert.equal(ui.get('scan-button').disabled, false);
   resolveScan({status:'completed', sources:[], report:report()});
   await pending;
@@ -167,29 +167,11 @@ test('report overview counts scoring results without treating unmeasured checks 
   assert.equal(model.passed, 1);
   assert.equal(model.failed, 1);
   assert.equal(model.uncertain, 3);
-  assert.equal(model.different, 0);
   assert.equal(model.actions.length, 1);
   assert.equal(model.actions[0], value.checks[1]);
   assert.equal(JSON.stringify(value), before);
 });
 
-test('native differences include partial matches but do not manufacture action failures', () => {
-  const ui = setup(() => ({}));
-  const value = report();
-  value.checks = [
-    {check_id:'partial', match_type:'partial', scoring_status:'FAIL', sources:{ora:{status:'PASS'}, agentready_oss:{status:'FAIL'}}},
-    {check_id:'different', match_type:'equivalent', scoring_status:'UNKNOWN', sources:{ora:{status:'FAIL'}, agentready_oss:{status:'PASS'}}},
-    {check_id:'agreement', scoring_status:'FAIL', sources:{ora:{status:'FAIL'}, agentready_oss:{status:'FAIL'}}},
-    {check_id:'unmeasured', scoring_status:'NOT_APPLICABLE', sources:{}},
-  ];
-  const model = ui.modelReport(value);
-  assert.equal(model.different, 2);
-  assert.equal(model.failed, 2);
-  assert.equal(model.uncertain, 2);
-  assert.equal(model.actions.length, 2);
-  assert.equal(model.actions[0], value.checks[0]);
-  assert.equal(model.actions[1], value.checks[2]);
-});
 
 test('empty report overview remains unmeasured and handles missing checks safely', () => {
   const ui = setup(() => ({}));
@@ -199,7 +181,6 @@ test('empty report overview remains unmeasured and handles missing checks safely
     assert.equal(model.passed, 0);
     assert.equal(model.failed, 0);
     assert.equal(model.uncertain, 0);
-    assert.equal(model.different, 0);
-    assert.equal(model.actions.length, 0);
+      assert.equal(model.actions.length, 0);
   }
 });

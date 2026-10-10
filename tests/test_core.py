@@ -1,4 +1,4 @@
-"""Security boundaries and honest provider comparison contracts."""
+"""Security boundaries and honest Ora reporting contracts."""
 import json
 import socket
 import unittest
@@ -17,22 +17,13 @@ ORA_IDS = {
     "auth.protected_resource": "oauth-protected-resource",
     "integration.mcp_card": "mcp-server-card",
 }
-OSS_IDS = {
-    "discovery.sitemap": "sitemap",
-    "discovery.link_headers": "linkHeaders",
-    "content.llms_txt": "llmsTxt",
-    "content.markdown": "markdownNegotiation",
-    "auth.oauth_metadata": "oauthDiscovery",
-    "auth.protected_resource": "oauthProtectedResource",
-    "integration.mcp_card": "mcpServerCard",
-}
 
 
-def sources(ora=None, oss=None):
+def sources(ora=None):
     def envelope(raw):
         return {"status": "completed" if raw is not None else "unavailable",
                 "raw": raw, "observed_at": "2026-10-10T12:00:00Z"}
-    return {"ora": envelope(ora), "agentready_oss": envelope(oss)}
+    return {"ora": envelope(ora)}
 
 
 def ora_checks(entries):
@@ -40,13 +31,6 @@ def ora_checks(entries):
         {"id": "accessibility", "checks": [
             {"id": cid, "status": status, "details": "native Ora evidence"}
             for cid, status in entries.items()]}]}
-
-
-def oss_checks(entries):
-    return {"scanner": "agent_ready_scan.py 1.0.0", "checks": {
-        "discoverability": {cid: {"status": status, "message": "native OSS evidence",
-                                    "details": {}, "evidence": []}
-                            for cid, status in entries.items()}}}
 
 
 def row(report, check_id):
@@ -105,7 +89,6 @@ class ReportingTests(unittest.TestCase):
             self.assertEqual(check["combined_status"], "UNKNOWN")
             self.assertTrue(check["reason"])
             self.assertIn("category", check)
-            self.assertIn("match_type", check)
         score = report["score"]
         self.assertIsNone(score["total"])
         self.assertEqual(score["coverage"], 0)
@@ -114,29 +97,11 @@ class ReportingTests(unittest.TestCase):
             self.assertEqual(score["breakdown"][layer]["max_points"], weight)
             self.assertIsNone(score["breakdown"][layer]["points"])
 
-    def test_equivalent_matching_passes_are_consensus(self):
-        report = build_report("example.com", sources(
-            ora_checks({"sitemap": "pass"}), oss_checks({"sitemap": "pass"})))
+    def test_ora_pass_is_scored_from_ora(self):
+        report = build_report("example.com", sources(ora_checks({"sitemap": "pass"})))
         check = row(report, "discovery.sitemap")
-        self.assertEqual(check["match_type"], "equivalent")
         self.assertEqual(check["combined_status"], "PASS")
-
-    def test_equivalent_pass_fail_is_different_and_not_positive_score(self):
-        report = build_report("example.com", sources(
-            ora_checks({"sitemap": "pass"}), oss_checks({"sitemap": "fail"})))
-        check = row(report, "discovery.sitemap")
-        self.assertEqual(check["combined_status"], "DIFFERENT")
-        self.assertNotEqual(check.get("scoring_status"), "PASS")
-
-    def test_partial_pairs_never_manufacture_consensus(self):
-        report = build_report("example.com", sources(
-            ora_checks({cid: "pass" for cid in ORA_IDS.values()}),
-            oss_checks({cid: "pass" for cid in OSS_IDS.values()})))
-        for check_id in set(ORA_IDS) - {"discovery.sitemap", "discovery.link_headers"}:
-            with self.subTest(check_id=check_id):
-                check = row(report, check_id)
-                self.assertNotEqual(check["match_type"], "equivalent")
-                self.assertEqual(check["combined_status"], "UNKNOWN")
+        self.assertEqual(check["scoring_source"], "ora")
 
     def test_native_states_survive_normalization(self):
         expected = {"warning": "WARNING", "warn": "WARNING", "pending": "UNKNOWN",
@@ -145,8 +110,8 @@ class ReportingTests(unittest.TestCase):
         for native, normalized in expected.items():
             with self.subTest(native=native):
                 report = build_report("example.com", sources(
-                    ora_checks({"sitemap": native}), oss_checks({"sitemap": native})))
-                for provider in ("ora", "agentready_oss"):
+                    ora_checks({"sitemap": native})))
+                for provider in ("ora",):
                     source = row(report, "discovery.sitemap")["sources"][provider]
                     self.assertEqual(source["native_status"], native)
                     self.assertEqual(source["status"], normalized)
@@ -154,11 +119,8 @@ class ReportingTests(unittest.TestCase):
                 self.assertIsNone(report["score"]["total"])
                 self.assertEqual(report["score"]["coverage"], 0)
 
-    def test_one_unavailable_provider_does_not_erase_other_evidence(self):
-        report = build_report("example.com", sources(oss=oss_checks({"sitemap": "pass"})))
-        check = row(report, "discovery.sitemap")
-        self.assertEqual(check["sources"]["agentready_oss"]["status"], "PASS")
-        self.assertEqual(check["sources"]["ora"]["status"], "UNKNOWN")
+    def test_partial_evidence_gives_partial_coverage(self):
+        report = build_report("example.com", sources(ora_checks({"sitemap": "pass"})))
         self.assertIsNotNone(report["score"]["total"])
         self.assertGreater(report["score"]["coverage"], 0)
         self.assertLess(report["score"]["coverage"], 100)
@@ -166,13 +128,10 @@ class ReportingTests(unittest.TestCase):
 
     def test_unmapped_provider_rows_remain_available(self):
         report = build_report("example.com", sources(
-            ora_checks({"ora-future-check": "warning"}),
-            oss_checks({"oss-future-check": "skip"})))
+            ora_checks({"ora-future-check": "warning"})))
         preserved = json.dumps(report["source_specific"])
         self.assertIn("ora-future-check", preserved)
-        self.assertIn("oss-future-check", preserved)
         self.assertIn("native Ora evidence", preserved)
-        self.assertIn("native OSS evidence", preserved)
 
 
 if __name__ == "__main__":

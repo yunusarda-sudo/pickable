@@ -15,7 +15,7 @@
 
 ## 4. Fault-Tolerant Parallel Orchestration (`orchestrator.py`)
 - **Decision**: Execute adapters concurrently using `asyncio.gather(..., return_exceptions=True)`. Wrap each source run in isolated try-except blocks.
-- **Rationale**: Different scanning providers have different network latencies and failure rates (e.g. rate limits, remote downtime). A failure or timeout in Ora must never fail the OSS scanner run, and vice-versa. Partial scan data is always preserved.
+- **Rationale**: Different scanning providers have different network latencies and failure rates (e.g. rate limits, remote downtime). A failure or timeout in one source must never fail another. Partial scan data is always preserved.
 
 ## 5. Non-Destructive Status Mapping (Evidence Preservation)
 - **Decision**: Never convert `UNKNOWN`, `NA`, `NOT_APPLICABLE`, or `WARNING` statuses to `FAIL`.
