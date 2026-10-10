@@ -1125,7 +1125,7 @@ def run_scan(target: str, deep=False, timeout=12, only=None, extended=True) -> d
                  check_security_txt, check_feed]
 
     results = []
-    with futures.ThreadPoolExecutor(max_workers=8) as pool:
+    with futures.ThreadPoolExecutor(max_workers=25) as pool:
         for c in pool.map(lambda f: _safe(f, s), jobs):
             results.append(c)
 

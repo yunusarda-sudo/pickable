@@ -79,6 +79,22 @@ def cmd_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_server(args: argparse.Namespace) -> int:
+    from app.server import make_live_server
+
+    server = make_live_server(port=args.port, host=args.host)
+    print(
+        f"CANLI MOD — http://{args.host}:{server.server_port} — Ora ve AgentReady OSS paralel çalışıyor",
+        flush=True,
+    )
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nSunucu kapatılıyor...")
+        server.server_close()
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Multi-source Agent Readiness CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -92,6 +108,12 @@ def main(argv=None) -> int:
     show_parser = subparsers.add_parser("show", help="Show saved raw reports for a job_id")
     show_parser.add_argument("job_id", help="Job ID")
     show_parser.set_defaults(func=cmd_show)
+
+    # server sub-command
+    server_parser = subparsers.add_parser("server", help="Start the live web UI server")
+    server_parser.add_argument("--port", type=int, default=8765, help="Port (default: 8765)")
+    server_parser.add_argument("--host", type=str, default="127.0.0.1", help="Host (default: 127.0.0.1)")
+    server_parser.set_defaults(func=cmd_server)
 
     args = parser.parse_args(argv)
     return args.func(args)

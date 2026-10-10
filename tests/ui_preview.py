@@ -91,11 +91,17 @@ def make_server(port=8765):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Pickable test verisiyle UI önizlemesi; gerçek tarama yapmaz.")
+    parser = argparse.ArgumentParser(description="Pickable UI sunucusu")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--live", action="store_true", help="Canlı tarama modu (Ora ve AgentReady OSS)")
     args = parser.parse_args()
-    server = make_server(args.port)
-    print(f"TEST MODU — http://127.0.0.1:{server.server_port} — gerçek tarama yapılmaz", flush=True)
+    if args.live:
+        from app.server import make_live_server
+        server = make_live_server(args.port)
+        print(f"CANLI MOD — http://127.0.0.1:{server.server_port} — Ora ve AgentReady OSS paralel çalışıyor", flush=True)
+    else:
+        server = make_server(args.port)
+        print(f"TEST MODU — http://127.0.0.1:{server.server_port} — gerçek tarama yapılmaz", flush=True)
     try: server.serve_forever()
     except KeyboardInterrupt: pass
     finally: server.server_close()
