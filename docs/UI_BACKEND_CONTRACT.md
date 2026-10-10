@@ -49,5 +49,5 @@ report = build_report("randevuo.com.tr", {
 
 ## Yerel UI doğrulaması
 
-`python3 tests/ui_preview.py` yalnız fixture temelli test sunucusudur; canlı tarama
-yapmaz. UI'da TEST MODU banner'ı görünür. Gerçek backend değildir.
+`python3 server.py` canlı Ora taraması yapar (`mode: "live"`). `python3 server.py --demo` yalnız
+fixture verisi kullanır; UI'da TEST MODU banner'ı görünür.

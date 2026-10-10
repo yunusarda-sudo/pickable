@@ -3,13 +3,13 @@ import threading
 import unittest
 import urllib.request
 import urllib.error
-from ui_preview import make_server
+from server import make_server, demo_backend
 
 
 class UIPreviewTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.server = make_server(0)
+        cls.server = make_server(0, demo_backend())
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
         cls.base = f"http://127.0.0.1:{cls.server.server_port}"
@@ -72,3 +72,27 @@ class UIPreviewTests(unittest.TestCase):
 
 
 if __name__ == "__main__": unittest.main()
+
+
+class LiveBackendTests(unittest.TestCase):
+    def test_queued_scan_completes_with_report_and_raw(self):
+        import tempfile, time
+        from unittest.mock import patch
+        from app.adapters.base import AdapterResult
+        from app.config import Config
+        from server import live_backend
+        raw = json.dumps({"layers": [{"checks": [{"id": "sitemap", "status": "pass"}]}]})
+        async def fake_scan(self, domain, job_id):
+            return AdapterResult(source_id="ora", status="completed", raw_report=raw, checks=[], error=None)
+        with tempfile.TemporaryDirectory() as tmp, patch.object(Config, "DB_PATH", tmp + "/scan.db"), \
+                patch("app.adapters.ora.OraAdapter.scan", fake_scan):
+            backend = live_backend()
+            job_id = backend["create"]("example.com")
+            for _ in range(50):
+                job = backend["get"](job_id)
+                if job["status"] == "completed": break
+                time.sleep(0.05)
+            self.assertEqual(job["status"], "completed")
+            self.assertEqual(job["report"]["checks"][0]["scoring_status"], "PASS")
+            self.assertEqual(backend["raw"](job_id, "ora")["layers"][0]["checks"][0]["id"], "sitemap")
+            self.assertEqual(backend["list"]()[0]["id"], job_id)

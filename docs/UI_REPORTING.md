@@ -9,7 +9,7 @@ orchestrator ve canlı API sunucusu aynı projede çalışan diğer sohbetin kap
 Proje kökünde:
 
 ```sh
-python3 tests/ui_preview.py --port 8765
+python3 server.py --demo --port 8765
 ```
 
 Ardından <http://127.0.0.1:8765> adresini açın. Açılış ekranında boş domain

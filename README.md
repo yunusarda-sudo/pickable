@@ -76,6 +76,15 @@ python3 -m unittest discover tests/ -v
 
 ---
 
+## Web UI
+
+```bash
+python3 server.py            # live Ora scans → http://127.0.0.1:8765
+python3 server.py --demo     # synthetic fixture data, no network
+```
+
+Env: `PORT`, `BIND` (use `0.0.0.0` on a host), `ALLOWED_HOSTS` (comma-separated public host names, e.g. `pickable.example.com`), `DB_PATH`, `ORA_API_KEY`.
+
 ## CLI Usage
 
 ### 1. Scan a Domain
