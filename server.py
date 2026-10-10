@@ -184,7 +184,8 @@ if __name__ == "__main__":
     parser.add_argument("--bind", default=os.environ.get("BIND", "127.0.0.1"))
     parser.add_argument("--demo", action="store_true", help="Synthetic test data; no real scans.")
     args = parser.parse_args()
-    allowed = [h.strip() for h in os.environ.get("ALLOWED_HOSTS", "").split(",") if h.strip()]
+    # RENDER_EXTERNAL_HOSTNAME is set by Render, so the public URL works without extra config.
+    allowed = [h.strip() for h in (os.environ.get("ALLOWED_HOSTS", "") + "," + os.environ.get("RENDER_EXTERNAL_HOSTNAME", "")).split(",") if h.strip()]
     server = make_server(args.port, demo_backend() if args.demo else live_backend(), args.bind, allowed)
     print(f"{'DEMO MODE' if args.demo else 'LIVE'} — http://127.0.0.1:{server.server_port}", flush=True)
     try: server.serve_forever()

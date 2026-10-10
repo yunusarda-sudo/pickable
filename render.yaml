@@ -1,0 +1,16 @@
+# Render Blueprint: free Python web service, no dependencies to install.
+# Free instances sleep after ~15 min idle; the first request then takes ~1 min to wake.
+services:
+  - type: web
+    name: pickable
+    runtime: python
+    plan: free
+    branch: feat/remove-agentready
+    buildCommand: "true"
+    startCommand: python3 server.py
+    healthCheckPath: /api/config
+    envVars:
+      - key: BIND
+        value: 0.0.0.0
+      - key: PYTHON_VERSION
+        value: 3.12.3
