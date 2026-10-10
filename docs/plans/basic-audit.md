@@ -1,44 +1,45 @@
-# Çok kaynaklı raporlama — ilk sürüm
+# Multi-source reporting — first version
 
-10 Ekim 2026. Kullanıcı kapsamı: basit Türkçe arayüz ve çalışan backend;
-Ora + Python AgentReady, kaynak raporlarını saklama, karşılaştırma ve ayrı 100'lük ürün skoru.
+> Historical plan (2026-10-10). Since superseded: AgentReady was removed and Cloudflare
+> (isitagentready.com) added as a fallback source. See [UI and reporting](../UI_REPORTING.md).
 
-## Güncel iş bölümü
+Scope: a simple web UI and a working backend; Ora + Python AgentReady, storing source reports,
+comparison and a separate 100-point product score.
 
-Kullanıcı aynı klasörde iki sohbetin çalıştığını doğruladı. Bu sohbet arayüz ve
-raporlamayı tamamlar; adapter, depolama, orchestrator ve canlı API sunucusu diğer
-sohbete aittir. Aşağıdaki liste ürünün genel planıdır, tamamlanma iddiası değildir.
-Yerel UI önizlemesi yalnız sentetik fixture kullanır. Güncel kullanım ve sınırlar
-[arayüz ve raporlama dokümanındadır](../UI_REPORTING.md).
+## Division of work
 
-## Uygulama sırası
+Two chat sessions worked in this folder. One finished the UI and reporting; the other owned adapters,
+storage, the orchestrator and the live API server. The list below is the overall product plan, not a
+claim of completion.
 
-1. Güvenlik ve skor testlerini önce yazıp kırmızı sonucu doğrula.
-2. Public hedef doğrulama ve DNS'e sabitlenmiş HTTP taşıma katmanı.
-3. Ora tarama/polling adapter'ı ve commit'e sabitlenmiş MIT scanner runner'ı.
-4. SQLite ham rapor/iş saklama; iki kaynağı paralel çalıştırma, ayrı hata durumları.
-5. Sürümlenmiş kontrol sözlüğü, karşılaştırma ve skor/kapsam hesabı.
-6. Domain formu, kaynak ilerlemesi, kanıt tablosu, ham JSON indirme, geçmiş.
-7. Otomatik testler, gerçek randevuo.com.tr taraması ve tarayıcı kontrolü.
-8. Kod/güvenlik incelemesi ve kullanım dokümanı.
+## Implementation order
 
-## Sınırlar ve kararlar
+1. Write security and scoring tests first and confirm they fail.
+2. Public target validation and a DNS-pinned HTTP transport.
+3. Ora scan/polling adapter and a commit-pinned MIT scanner runner.
+4. SQLite storage for raw reports/jobs; run both sources in parallel with separate error states.
+5. Versioned check mapping, comparison and score/coverage calculation.
+6. Domain form, source progress, evidence table, raw JSON download, history.
+7. Automated tests, a real randevuo.com.tr scan and a browser check.
+8. Code/security review and usage docs.
 
-- Python standart kütüphanesi + SQLite + HTML/CSS/JS; framework/dependency kurulumu yok.
-- Yalnız public domain, varsayılan portlar; her keşfedilmiş URL ve redirect için public egress.
-- Vendor ağ erişimi güvenli fetch wrapper'ından geçer; subprocess süre/kaynak sınırı vardır.
-- Sağlayıcı skorları korunur; ürün skoru bunların ortalaması değildir.
-- PASS/FAIL dışı veriler paydadan çıkar. Tamamen ölçülmeyen katman null;
-  puan verilmez. Eksik kapsam yüzde olarak raporlanır, puan ön skor olarak etiketlenir.
-- Kısmi/ilişkili eşleşmeler doğrulanmış uzlaşma sayılmaz. Koşul eksikliği açıklanır.
-- Ham rapor, native durumlar, sağlayıcı sürümü ve tarama zamanı korunur.
-- Onarım, overlay, gerçek görev testi, Cloudflare ve yayınlama kapsam dışında.
+## Constraints and decisions
 
-## Kabul koşulları
+- Python standard library + SQLite + HTML/CSS/JS; no frameworks or dependencies.
+- Public domains on default ports only; public egress enforced for every discovered URL and redirect.
+- Vendor network access goes through the safe fetch wrapper; subprocesses have time/resource limits.
+- Provider scores are preserved; the product score is not their average.
+- Non-PASS/FAIL data is excluded from the denominator. Fully unmeasured layers are null and earn no
+  points. Missing coverage is reported as a percentage and the score is labelled preliminary.
+- Partial/related mappings are not treated as verified agreement. Missing conditions are explained.
+- Raw reports, native statuses, provider version and scan time are preserved.
+- Out of scope: remediation, overlays, real agent task tests, Cloudflare and publishing.
 
-- Tek kaynak hatası diğer kaynağın verisini kaybettirmez.
-- UNKNOWN/N/A hiçbir zaman FAIL'e veya ücretsiz puana dönüşmez.
-- Kullanıcı her bulgunun kaynağını ve ham kanıtını açabilir.
-- Private IP, mixed DNS ve private redirect istekleri ağdan önce engellenir.
-- Raporlar sunucu yeniden başladığında korunur; yarım işler kesildi olarak işaretlenir.
-- Testler ve yerel runtime akışı geçer; gerçek sağlayıcı sorunları açıkça gösterilir.
+## Acceptance criteria
+
+- One source failing never loses another source's data.
+- UNKNOWN/N/A never turns into FAIL or free points.
+- Users can open the source and raw evidence of every finding.
+- Private IPs, mixed DNS answers and private redirects are blocked before any network request.
+- Reports survive a server restart; unfinished jobs are marked interrupted.
+- Tests and the local runtime flow pass; real provider problems are shown clearly.

@@ -81,11 +81,15 @@ class LiveBackendTests(unittest.TestCase):
         from app.adapters.base import AdapterResult
         from app.config import Config
         from server import live_backend
-        raw = json.dumps({"layers": [{"checks": [{"id": "sitemap", "status": "pass"}]}]})
+        raw = json.dumps({"layers": [{"checks": [{"id": "sitemap", "status": "pass"}, {"id": "link-headers-discovery", "status": "warning"}]}]})
+        cf_raw = json.dumps({"checks": {"discoverability": {"linkHeaders": {"status": "fail"}}}})
         async def fake_scan(self, domain, job_id):
             return AdapterResult(source_id="ora", status="completed", raw_report=raw, checks=[], error=None)
+        async def fake_cf_scan(self, domain, job_id):
+            return AdapterResult(source_id="cloudflare", status="completed", raw_report=cf_raw, checks=[], error=None)
         with tempfile.TemporaryDirectory() as tmp, patch.object(Config, "DB_PATH", tmp + "/scan.db"), \
-                patch("app.adapters.ora.OraAdapter.scan", fake_scan):
+                patch("app.adapters.ora.OraAdapter.scan", fake_scan), \
+                patch("app.adapters.cloudflare.CloudflareAdapter.scan", fake_cf_scan):
             backend = live_backend()
             job_id = backend["create"]("example.com")
             for _ in range(50):
@@ -94,5 +98,9 @@ class LiveBackendTests(unittest.TestCase):
                 time.sleep(0.05)
             self.assertEqual(job["status"], "completed")
             self.assertEqual(job["report"]["checks"][0]["scoring_status"], "PASS")
+            self.assertEqual(job["report"]["checks"][0]["scoring_source"], "ora")
+            # Ora only warned on link headers, so Cloudflare's definitive FAIL is the fallback
+            self.assertEqual(job["report"]["checks"][1]["scoring_status"], "FAIL")
+            self.assertEqual(job["report"]["checks"][1]["scoring_source"], "cloudflare")
             self.assertEqual(backend["raw"](job_id, "ora")["layers"][0]["checks"][0]["id"], "sitemap")
             self.assertEqual(backend["list"]()[0]["id"], job_id)

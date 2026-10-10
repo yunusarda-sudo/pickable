@@ -54,7 +54,7 @@ test('superseded history failure cannot unlock current scan or replace its notic
 
 test('missing or non-string timestamps never become epoch dates', () => {
   const ui = setup(() => ({}));
-  for (const value of [null, undefined, false, 0, [], {}, 'invalid']) assert.equal(ui.formatTime(value), 'Zaman bilgisi yok');
+  for (const value of [null, undefined, false, 0, [], {}, 'invalid']) assert.equal(ui.formatTime(value), 'No timestamp');
 });
 
 test('malformed provider summaries and recommendation containers render safely', () => {
@@ -76,7 +76,7 @@ test('non-string native fields are displayed as JSON without coercion or evidenc
   bad.recommendations = [{recommendation:native}];
   const before = JSON.stringify(bad);
   assert.doesNotThrow(() => ui.renderReport(bad));
-  assert.equal(ui.get('checks').children[0].children[1].children[1].textContent, 'Kaynak: {"toString":0}');
+  assert.equal(ui.get('checks').children[0].children[1].children[1].textContent, 'Native: {"toString":0}');
   assert.match(ui.get('specific-list').children[0].children[0].textContent, /\{"toString":0\}/);
   assert.match(ui.get('recommendations').children[0].textContent, /"toString": 0/);
   assert.equal(JSON.stringify(bad), before);
@@ -92,16 +92,23 @@ test('initialization presents only the domain landing view before any scan', asy
   assert.equal(ui.state.token, 'test-token');
 });
 
-test('pending scan keeps a partial report hidden until analysis is terminal', async () => {
+test('running scan shows a partial report as soon as one exists and keeps polling', async () => {
   const partial = report();
-  const ui = setup(() => ({status:'running', sources:[], report:partial}));
+  const ui = setup(() => ({status:'running', sources:[{id:'cloudflare', status:'completed'}], report:partial}));
   await ui.loadScan('pending', ui.state.generation);
-  assert.equal(ui.get('landing-view').hidden, true);
+  assert.equal(ui.get('loading-view').hidden, true);
+  assert.equal(ui.get('report-view').hidden, false);
+  assert.equal(ui.get('results').hidden, false);
+  assert.equal(ui.get('scan-button').disabled, true);
+  assert.match(ui.get('notice').textContent, /Partial results/);
+  assert.equal(ui.get('ora-state').textContent, 'Waiting');
+});
+
+test('running scan without any source report stays on the loading view', async () => {
+  const ui = setup(() => ({status:'running', sources:[], report:null}));
+  await ui.loadScan('pending', ui.state.generation);
   assert.equal(ui.get('loading-view').hidden, false);
   assert.equal(ui.get('report-view').hidden, true);
-  assert.equal(ui.get('results').hidden, true);
-  assert.equal(ui.get('download-report').href, undefined);
-  assert.equal(ui.get('scan-button').disabled, true);
 });
 
 test('terminal scan enters the report view and supplies its own download link', async () => {

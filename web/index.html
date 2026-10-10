@@ -1,58 +1,59 @@
 <!doctype html>
-<html lang="tr">
+<html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#141714">
-  <title>Pickable — Siten agent'lara hazır mı?</title>
+  <title>Pickable — Is your site ready for agents?</title>
   <link rel="stylesheet" href="/styles.css"><script src="/app.js" defer></script>
 </head>
 <body>
   <header class="site-header">
-    <a class="brand" href="/" aria-label="Pickable ana sayfa"><span class="brand-mark">p</span>pickable<span class="brand-dot">.</span></a>
-    <nav aria-label="Ana gezinme"><span id="demo-badge" class="demo-badge" hidden>TEST MODU</span><button id="open-history" class="nav-button">Geçmiş <span aria-hidden="true">↗</span></button></nav>
+    <a class="brand" href="/" aria-label="Pickable home"><span class="brand-mark">p</span>pickable<span class="brand-dot">.</span></a>
+    <nav aria-label="Main navigation"><span id="demo-badge" class="demo-badge" hidden>DEMO MODE</span><button id="open-history" class="nav-button">History <span aria-hidden="true">↗</span></button></nav>
   </header>
   <main>
     <section id="landing-view" class="landing" aria-labelledby="landing-title">
       <div class="hero-orbit" aria-hidden="true"></div>
-      <div class="eyebrow hero-kicker"><span class="live-dot"></span> AGENT ÇAĞINDA GÖRÜNÜR OL</div>
-      <h1 id="landing-title">Siten, agent'lara<br><em>hazır mı?</em></h1>
-      <p class="hero-description">Web siteni yapay zekânın gözünden gör.</p>
+      <div class="eyebrow hero-kicker"><span class="live-dot"></span> BE VISIBLE IN THE AGENT ERA</div>
+      <h1 id="landing-title">Is your site<br><em>agent-ready?</em></h1>
+      <p class="hero-description">See your website through the eyes of AI.</p>
       <form id="scan-form" class="domain-form">
-        <label for="domain" class="sr-only">Analiz edilecek public domain</label>
+        <label for="domain" class="sr-only">Public domain to scan</label>
         <span class="input-globe" aria-hidden="true">◎</span>
-        <input id="domain" name="domain" placeholder="websiten.com" required maxlength="253" autocomplete="url" spellcheck="false" autocapitalize="none">
-        <button id="scan-button" type="submit" aria-label="Analizi başlat"><span>Analiz et</span><span aria-hidden="true">↗</span></button>
+        <input id="domain" name="domain" placeholder="yoursite.com" required maxlength="253" autocomplete="url" spellcheck="false" autocapitalize="none">
+        <button id="scan-button" type="submit" aria-label="Start scan"><span>Scan</span><span aria-hidden="true">↗</span></button>
       </form>
-      <p class="hero-note">Domainini gir. Hazır olduğun noktaları ve eksiklerini keşfet.</p>
-      <div class="hero-bottom" aria-hidden="true"><span>01 / KEŞFEDİLEBİLİRLİK</span><span>02 / ANLAŞILABİLİRLİK</span><span>03 / KULLANILABİLİRLİK</span></div>
+      <p class="hero-note">Enter your domain. Discover what you have ready and what is missing.</p>
+      <div class="hero-bottom" aria-hidden="true"><span>01 / DISCOVERABILITY</span><span>02 / READABILITY</span><span>03 / USABILITY</span></div>
     </section>
     <section id="loading-view" class="loading-view" aria-labelledby="loading-title" aria-busy="true" hidden>
       <div class="scan-orbit" aria-hidden="true"><span>p</span></div>
-      <div class="eyebrow">ANALİZ SÜRÜYOR</div>
-      <h1 id="loading-title" tabindex="-1">Birazdan daha<br><em>net göreceksin.</em></h1>
-      <p id="loading-domain"></p><p class="loading-note">Kaynak raporları toplanıyor ve bulgular eşleştiriliyor.</p>
-      <button id="cancel-analysis" class="text-button">Girişe dön</button>
+      <div class="eyebrow">SCAN IN PROGRESS</div>
+      <h1 id="loading-title" tabindex="-1">In a moment,<br><em>you will see clearly.</em></h1>
+      <p id="loading-domain"></p><p class="loading-note">Collecting source reports and matching findings.</p>
+      <button id="cancel-analysis" class="text-button">Back to start</button>
     </section>
     <div id="report-view" class="report-view" hidden>
-      <div class="report-nav"><button id="new-analysis" class="text-button">← Yeni analiz</button><a id="download-report" class="report-download" download>Raporu indir ↗</a></div>
+      <div class="report-nav"><button id="new-analysis" class="text-button">← New scan</button><a id="download-report" class="report-download" download>Download report ↗</a></div>
       <section id="results" hidden>
         <div class="report-identity"><span class="report-site-icon" aria-hidden="true">◎</span><div><h2 id="report-domain" tabindex="-1"></h2><p id="report-time"></p></div><span class="report-version">AGENT READINESS / 01</span></div>
-        <section class="report-hero" aria-label="Analiz özeti">
-          <div class="report-score"><div class="eyebrow">PICKABLE ÖN SKORU</div><div class="score-number"><strong id="score-total">—</strong><span>/100</span></div><p id="score-coverage"></p></div>
-          <div class="report-assessment"><span class="assessment-label">GENEL GÖRÜNÜM</span><h3 id="report-headline"></h3><p id="report-summary"></p><div id="report-counts" class="report-counts"></div></div>
+        <section class="report-hero" aria-label="Scan summary">
+          <div class="report-score"><div class="eyebrow">PICKABLE PRELIMINARY SCORE</div><div class="score-number"><strong id="score-total">—</strong><span>/100</span></div><p id="score-coverage"></p></div>
+          <div class="report-assessment"><span class="assessment-label">OVERVIEW</span><h3 id="report-headline"></h3><p id="report-summary"></p><div id="report-counts" class="report-counts"></div></div>
         </section>
-        <div id="layers" class="report-layer-strip" aria-label="Katman puanları"></div>
+        <div id="layers" class="report-layer-strip" aria-label="Layer scores"></div>
         <div class="report-body">
-          <section class="action-section" aria-labelledby="actions-title"><div class="section-heading"><div><span class="section-index">01 / SONRAKİ ADIMLAR</span><h2 id="actions-title">Nereden başlamalısın?</h2></div><span id="action-count" class="section-aside"></span></div><p class="section-description">Eksik bildirilen kontroller için öneriler. Sitenin kullanımına göre değerlendir.</p><div id="action-list" class="action-list"></div></section>
-          <section aria-labelledby="findings-title"><div class="section-heading"><div><span class="section-index">02 / KONTROLLER</span><h2 id="findings-title">Agent deneyiminin katmanları</h2></div><span class="section-aside">Ayrıntılar için bir kontrolü aç</span></div><div id="category-findings"></div></section>
-          <details class="technical-details"><summary><span>03 / KAYNAKLAR & YÖNTEM</span><span>Kontroller ve orijinal rapor ↗</span></summary><div class="technical-body">
-    <section class="sources" aria-label="Analiz kaynakları">
-      <article class="source-card"><span class="source-icon ora-icon">o</span><div><h3>Ora <span>Hosted scanner</span></h3><p id="ora-detail">Keşif, içerik ve entegrasyon kontrolleri</p></div><span id="ora-state" class="source-state">Hazır</span></article>
+          <section class="action-section" aria-labelledby="actions-title"><div class="section-heading"><div><span class="section-index">01 / NEXT STEPS</span><h2 id="actions-title">Where should you start?</h2></div><span id="action-count" class="section-aside"></span></div><p class="section-description">Suggestions for checks reported as missing. Weigh them against how your site is used.</p><div id="action-list" class="action-list"></div></section>
+          <section aria-labelledby="findings-title"><div class="section-heading"><div><span class="section-index">02 / CHECKS</span><h2 id="findings-title">Layers of the agent experience</h2></div><span class="section-aside">Open a check for details</span></div><div id="category-findings"></div></section>
+          <details class="technical-details"><summary><span>03 / SOURCES & METHOD</span><span>Checks and original reports ↗</span></summary><div class="technical-body">
+    <section class="sources" aria-label="Scan sources">
+      <article class="source-card"><span class="source-icon ora-icon">o</span><div><h3>Ora <span>Hosted scanner</span></h3><p id="ora-detail">Discovery, content and integration checks</p></div><span id="ora-state" class="source-state">Ready</span></article>
+      <article class="source-card"><span class="source-icon oss-icon">☁</span><div><h3>Cloudflare <span>Fallback scanner</span></h3><p id="cloudflare-detail">isitagentready.com · 22 checks</p></div><span id="cloudflare-state" class="source-state">Ready</span></article>
     </section>
-          <div class="method-note"><strong>Skor nasıl okunmalı?</strong> Katman puanı = geçen / (geçen + eksik) × ağırlık. Uyarı, belirsiz ve uygulanamaz kontroller puan dışındadır. Ölçülmeyen katmanlara puan verilmez. Bu rapor Ora'nın bildirdiği sonuçlara dayanır; bağımsız doğrulama veya gerçek agent görevi testi değildir.</div>
-      <section class="comparison"><div class="table-head"><div><h2>Kontrol tablosu</h2><p>Her satırı açarak kaynağın ham bulgusunu incele.</p></div><label for="filter" class="sr-only">Kontrolleri filtrele</label><select id="filter"><option value="all">Tüm kontroller</option><option value="pass">Geçti</option><option value="unknown">Belirsiz</option></select></div><div class="table-scroll"><table><thead><tr><th>Kontrol</th><th>Ora</th><th>Puan girdisi</th><th>Neden?</th></tr></thead><tbody id="checks"></tbody></table></div></section>
-      <details class="specific"><summary id="specific-title">Kaynağa özel bulgular</summary><div id="specific-list"></div></details>
-      <details class="specific"><summary>Öneriler ve orijinal raporlar</summary><div id="recommendations"></div><div class="raw-links"><a id="ora-raw" download>Ora ham JSON ↓</a></div><p class="form-note">Ora'nın orijinal skor, kontrol ve öneri sırası ham raporda korunur.</p></details>
+          <div class="method-note"><strong>How to read the score</strong> Layer score = passed / (passed + missing) × weight. Warnings, unclear and N/A checks are not scored. Unmeasured layers earn no points. Each check uses Ora's result; Cloudflare is used only when Ora has no definitive result. This is not independent verification or a real agent task test.</div>
+      <section class="comparison"><div class="table-head"><div><h2>Check table</h2><p>Open a row to inspect the raw findings from each source.</p></div><label for="filter" class="sr-only">Filter checks</label><select id="filter"><option value="all">All checks</option><option value="pass">Passed</option><option value="unknown">Unclear</option></select></div><div class="table-scroll"><table><thead><tr><th>Check</th><th>Ora</th><th>Cloudflare</th><th>Scored from</th><th>Why?</th></tr></thead><tbody id="checks"></tbody></table></div></section>
+      <details class="specific"><summary id="specific-title">Source-specific findings</summary><div id="specific-list"></div></details>
+      <details class="specific"><summary>Recommendations and original reports</summary><div id="recommendations"></div><div class="raw-links"><a id="ora-raw" download>Ora raw JSON ↓</a><a id="cloudflare-raw" download>Cloudflare raw JSON ↓</a></div><p class="form-note">Each source's original score, checks and recommendation order are kept in its raw report.</p></details>
           </div></details>
         </div>
       </section>
@@ -60,8 +61,8 @@
     <div id="empty-state" hidden></div>
     <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
   </main>
-  <footer class="site-footer"><span>Bir adres. Daha net bir resim.</span><span>pickable © 2026</span></footer>
-  <dialog id="history-dialog" aria-labelledby="history-title"><div class="dialog-head"><h2 id="history-title">Son analizler</h2><div><button id="refresh-history" aria-label="Geçmişi yenile">↻</button><button id="close-history" aria-label="Geçmişi kapat">✕</button></div></div><div id="history" class="history"></div></dialog>
-  <dialog id="evidence-dialog" aria-labelledby="evidence-title"><div class="dialog-head"><div><span class="eyebrow">KAYNAĞIN BİLDİRDİĞİ KANIT</span><h2 id="evidence-title"></h2></div><button id="close-dialog" aria-label="Kanıt penceresini kapat">✕</button></div><p id="evidence-reason"></p><div class="evidence-columns"><section><h3>Ora</h3><pre id="ora-evidence"></pre></section></div></dialog>
+  <footer class="site-footer"><span>One address. A clearer picture.</span><span>pickable © 2026</span></footer>
+  <dialog id="history-dialog" aria-labelledby="history-title"><div class="dialog-head"><h2 id="history-title">Recent scans</h2><div><button id="refresh-history" aria-label="Refresh history">↻</button><button id="close-history" aria-label="Close history">✕</button></div></div><div id="history" class="history"></div></dialog>
+  <dialog id="evidence-dialog" aria-labelledby="evidence-title"><div class="dialog-head"><div><span class="eyebrow">EVIDENCE REPORTED BY SOURCE</span><h2 id="evidence-title"></h2></div><button id="close-dialog" aria-label="Close evidence dialog">✕</button></div><p id="evidence-reason"></p><div class="evidence-columns"><section><h3>Ora</h3><pre id="ora-evidence"></pre></section><section><h3>Cloudflare</h3><pre id="cloudflare-evidence"></pre></section></div></dialog>
 </body>
 </html>

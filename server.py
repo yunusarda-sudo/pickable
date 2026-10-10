@@ -27,7 +27,7 @@ def demo_backend():
 
     def create(domain):
         if len(jobs) >= 30:
-            raise OverflowError("Test oturumu 30 raporla sınırlı; preview sunucusunu yeniden başlatın.")
+            raise OverflowError("Demo session is limited to 30 reports; restart the server.")
         job_id = secrets.token_hex(12)
         report = report_from_job({"domain": domain}, fixture_runs())
         jobs[job_id] = {"id": job_id, "domain": domain, "created_at": datetime.now(timezone.utc).isoformat(), "status": "completed", "sources": report["sources"], "report": report}
@@ -41,12 +41,13 @@ def demo_backend():
 
 
 def live_backend():
+    from app.adapters.cloudflare import CloudflareAdapter
     from app.adapters.ora import OraAdapter
     from app.config import Config
     from app.orchestrator import Orchestrator
     from app.storage import Storage
     storage = Storage(Config.DB_PATH)
-    orchestrator = Orchestrator(adapters=[OraAdapter()], storage=storage)
+    orchestrator = Orchestrator(adapters=[OraAdapter(), CloudflareAdapter()], storage=storage)
     pending = queue.Queue()
 
     def worker():
@@ -63,7 +64,7 @@ def live_backend():
 
     def create(domain):
         if pending.qsize() >= MAX_QUEUED:
-            raise OverflowError("Şu an çok fazla analiz sırada. Biraz sonra tekrar deneyin.")
+            raise OverflowError("Too many scans are queued right now. Please try again shortly.")
         job_id = storage.create_job(domain)
         pending.put((job_id, domain))
         return job_id
@@ -73,10 +74,9 @@ def live_backend():
         if not job:
             return None
         runs = storage.get_source_runs(job_id)
-        done = job["status"] not in ("pending", "running")
         return {"id": job["id"], "domain": job["domain"], "created_at": job["started_at"], "status": job["status"],
                 "sources": [{"id": r["source_id"], "status": r["status"], "error": r["error"]} for r in runs],
-                "report": report_from_job(job, runs) if done else None}
+                "report": report_from_job(job, runs) if runs else None}  # partial: render as soon as the first source lands
 
     def raw(job_id, source):
         run = next((r for r in storage.get_source_runs(job_id) if r["source_id"] == source), None)
@@ -112,11 +112,11 @@ def make_server(port, backend, bind="127.0.0.1", allowed_hosts=()):
             hosts = {f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}", *allowed_hosts}
             host = self.headers.get("Host")
             if host not in hosts:
-                self.send({"error": "Host engellendi."}, 403)
+                self.send({"error": "Host not allowed."}, 403)
                 return False
             origin = self.headers.get("Origin")
             if origin and origin not in ("http://" + host, "https://" + host):
-                self.send({"error": "Origin engellendi."}, 403)
+                self.send({"error": "Origin not allowed."}, 403)
                 return False
             return True
 
@@ -137,22 +137,22 @@ def make_server(port, backend, bind="127.0.0.1", allowed_hosts=()):
                     if len(parts) == 5 and parts[3] == "raw":
                         raw = backend["raw"](parts[2], parts[4])
                         if raw: self.send(raw, filename=parts[4] + ".json"); return
-            self.send({"error": "Kayıt bulunamadı."}, 404)
+            self.send({"error": "Not found."}, 404)
 
         def do_POST(self):
             if not self.allowed(): return
-            if self.path != "/api/scans": self.send({"error": "Endpoint bulunamadı."}, 404); return
+            if self.path != "/api/scans": self.send({"error": "Endpoint not found."}, 404); return
             if self.headers.get("X-CSRF-Token") != token:
-                self.send({"error": "Tarama tokenı geçersiz."}, 403); return
+                self.send({"error": "Invalid scan token."}, 403); return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 if not 0 < length <= 2048 or self.headers.get("Content-Type", "").split(";")[0] != "application/json":
                     self.close_connection = True
-                    self.send({"error": "JSON gövdesi geçersiz veya çok büyük."}, 400); return
+                    self.send({"error": "JSON body is invalid or too large."}, 400); return
                 data = json.loads(self.rfile.read(length))
                 domain = normalize_domain(data.get("domain"))
             except (ValueError, TypeError, AttributeError) as error:
-                self.send({"error": str(error) or "Geçersiz domain."}, 400); return
+                self.send({"error": str(error) or "Invalid domain."}, 400); return
             try:
                 self.send({"job_id": backend["create"](domain)}, 202)
             except OverflowError as error:
@@ -164,14 +164,14 @@ def make_server(port, backend, bind="127.0.0.1", allowed_hosts=()):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Pickable web sunucusu.")
+    parser = argparse.ArgumentParser(description="Pickable web server.")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8765)))
     parser.add_argument("--bind", default=os.environ.get("BIND", "127.0.0.1"))
-    parser.add_argument("--demo", action="store_true", help="Sentetik test verisi; gerçek tarama yapmaz.")
+    parser.add_argument("--demo", action="store_true", help="Synthetic test data; no real scans.")
     args = parser.parse_args()
     allowed = [h.strip() for h in os.environ.get("ALLOWED_HOSTS", "").split(",") if h.strip()]
     server = make_server(args.port, demo_backend() if args.demo else live_backend(), args.bind, allowed)
-    print(f"{'TEST MODU' if args.demo else 'CANLI'} — http://127.0.0.1:{server.server_port}", flush=True)
+    print(f"{'DEMO MODE' if args.demo else 'LIVE'} — http://127.0.0.1:{server.server_port}", flush=True)
     try: server.serve_forever()
     except KeyboardInterrupt: pass
     finally: server.server_close()
