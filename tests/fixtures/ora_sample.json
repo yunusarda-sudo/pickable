@@ -1,0 +1,36 @@
+{
+  "id": "scan_12345",
+  "domain": "randevuo.com.tr",
+  "score": 78,
+  "layers": [
+    {
+      "name": "Discovery",
+      "checks": [
+        {
+          "check_id": "robots_txt_exists",
+          "status": "pass",
+          "evidence": {
+            "url": "https://randevuo.com.tr/robots.txt",
+            "http_status": 200
+          }
+        },
+        {
+          "check_id": "llms_txt_exists",
+          "status": "fail",
+          "evidence": {
+            "url": "https://randevuo.com.tr/llms.txt",
+            "http_status": 404
+          }
+        },
+        {
+          "check_id": "sitemap_xml_exists",
+          "status": "warning",
+          "evidence": {
+            "url": "https://randevuo.com.tr/sitemap.xml",
+            "detail": "Slow response time"
+          }
+        }
+      ]
+    }
+  ]
+}

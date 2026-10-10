@@ -1,0 +1,2 @@
+# Optional test coverage dependency
+coverage>=7.0.0

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#141714">
+  <title>Pickable — Siten agent'lara hazır mı?</title>
+  <link rel="stylesheet" href="/styles.css"><script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="Pickable ana sayfa"><span class="brand-mark">p</span>pickable<span class="brand-dot">.</span></a>
+    <nav aria-label="Ana gezinme"><span id="demo-badge" class="demo-badge" hidden>TEST MODU</span><button id="open-history" class="nav-button">Geçmiş <span aria-hidden="true">↗</span></button></nav>
+  </header>
+  <main>
+    <section id="landing-view" class="landing" aria-labelledby="landing-title">
+      <div class="hero-orbit" aria-hidden="true"></div>
+      <div class="eyebrow hero-kicker"><span class="live-dot"></span> AGENT ÇAĞINDA GÖRÜNÜR OL</div>
+      <h1 id="landing-title">Siten, agent'lara<br><em>hazır mı?</em></h1>
+      <p class="hero-description">Web siteni yapay zekânın gözünden gör.</p>
+      <form id="scan-form" class="domain-form">
+        <label for="domain" class="sr-only">Analiz edilecek public domain</label>
+        <span class="input-globe" aria-hidden="true">◎</span>
+        <input id="domain" name="domain" placeholder="websiten.com" required maxlength="253" autocomplete="url" spellcheck="false" autocapitalize="none">
+        <button id="scan-button" type="submit" aria-label="Analizi başlat"><span>Analiz et</span><span aria-hidden="true">↗</span></button>
+      </form>
+      <p class="hero-note">Domainini gir. Hazır olduğun noktaları ve eksiklerini keşfet.</p>
+      <div class="hero-bottom" aria-hidden="true"><span>01 / KEŞFEDİLEBİLİRLİK</span><span>02 / ANLAŞILABİLİRLİK</span><span>03 / KULLANILABİLİRLİK</span></div>
+    </section>
+    <section id="loading-view" class="loading-view" aria-labelledby="loading-title" aria-busy="true" hidden>
+      <div class="scan-orbit" aria-hidden="true"><span>p</span></div>
+      <div class="eyebrow">ANALİZ SÜRÜYOR</div>
+      <h1 id="loading-title" tabindex="-1">Birazdan daha<br><em>net göreceksin.</em></h1>
+      <p id="loading-domain"></p><p class="loading-note">Kaynak raporları toplanıyor ve bulgular eşleştiriliyor.</p>
+      <button id="cancel-analysis" class="text-button">Girişe dön</button>
+    </section>
+    <div id="report-view" class="report-view" hidden>
+      <div class="report-nav"><button id="new-analysis" class="text-button">← Yeni analiz</button><a id="download-report" class="report-download" download>Raporu indir ↗</a></div>
+      <section id="results" hidden>
+        <div class="report-identity"><span class="report-site-icon" aria-hidden="true">◎</span><div><h2 id="report-domain" tabindex="-1"></h2><p id="report-time"></p></div><span class="report-version">AGENT READINESS / 01</span></div>
+        <section class="report-hero" aria-label="Analiz özeti">
+          <div class="report-score"><div class="eyebrow">PICKABLE ÖN SKORU</div><div class="score-number"><strong id="score-total">—</strong><span>/100</span></div><p id="score-coverage"></p></div>
+          <div class="report-assessment"><span class="assessment-label">GENEL GÖRÜNÜM</span><h3 id="report-headline"></h3><p id="report-summary"></p><div id="report-counts" class="report-counts"></div></div>
+        </section>
+        <div id="layers" class="report-layer-strip" aria-label="Katman puanları"></div>
+        <div class="report-body">
+          <section class="action-section" aria-labelledby="actions-title"><div class="section-heading"><div><span class="section-index">01 / SONRAKİ ADIMLAR</span><h2 id="actions-title">Nereden başlamalısın?</h2></div><span id="action-count" class="section-aside"></span></div><p class="section-description">Eksik bildirilen kontroller için öneriler. Sitenin kullanımına göre değerlendir.</p><div id="action-list" class="action-list"></div></section>
+          <section aria-labelledby="findings-title"><div class="section-heading"><div><span class="section-index">02 / KONTROLLER</span><h2 id="findings-title">Agent deneyiminin katmanları</h2></div><span class="section-aside">Ayrıntılar için bir kontrolü aç</span></div><div id="category-findings"></div></section>
+          <details class="technical-details"><summary><span>03 / KAYNAKLAR & YÖNTEM</span><span>Karşılaştırma ve orijinal raporlar ↗</span></summary><div class="technical-body">
+    <section class="sources" aria-label="Analiz kaynakları">
+      <article class="source-card"><span class="source-icon ora-icon">o</span><div><h3>Ora <span>Hosted scanner</span></h3><p id="ora-detail">Keşif, içerik ve entegrasyon kontrolleri</p></div><span id="ora-state" class="source-state">Hazır</span></article>
+      <article class="source-card"><span class="source-icon oss-icon">⌘</span><div><h3>AgentReady <span>Open source</span></h3><p id="agentready_oss-detail">Python · MIT · 30 kontrol</p></div><span id="agentready_oss-state" class="source-state">Hazır</span></article>
+    </section>
+          <div class="method-note"><strong>Skor nasıl okunmalı?</strong> Kaynak skorları ortalanmaz. Katman puanı = geçen / (geçen + eksik) × ağırlık. Uyarı, belirsiz ve uygulanamaz kontroller puan dışındadır. Ölçülmeyen katmanlara puan verilmez. Kısmi eşleşmede yalnız Python ölçütü kullanılır. Bu rapor kaynak beyanlarını birleştirir; bağımsız doğrulama veya gerçek agent görevi testi değildir.</div>
+      <section class="comparison"><div class="table-head"><div><h2>Kontrol karşılaştırması</h2><p>Her satırı açarak iki kaynağın ham bulgusunu incele.</p></div><label for="filter" class="sr-only">Kontrolleri filtrele</label><select id="filter"><option value="all">Tüm kontroller</option><option value="different">Farklı sonuçlar</option><option value="pass">Ortak olumlu</option><option value="unknown">Belirsiz / kısmi</option></select></div><div class="table-scroll"><table><thead><tr><th>Kontrol / eşleşme</th><th>Ora</th><th>AgentReady</th><th>Puan girdisi</th><th>Neden?</th></tr></thead><tbody id="checks"></tbody></table></div></section>
+      <details class="specific"><summary id="specific-title">Kaynağa özel bulgular</summary><div id="specific-list"></div></details>
+      <details class="specific"><summary>Öneriler ve orijinal raporlar</summary><div id="recommendations"></div><div class="raw-links"><a id="ora-raw" download>Ora ham JSON ↓</a><a id="oss-raw" download>AgentReady ham JSON ↓</a></div><p class="form-note">Ora'nın orijinal skor, kontrol ve öneri sırası ham raporda korunur.</p></details>
+          </div></details>
+        </div>
+      </section>
+    </div>
+    <div id="empty-state" hidden></div>
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+  </main>
+  <footer class="site-footer"><span>Bir adres. Daha net bir resim.</span><span>pickable © 2026</span></footer>
+  <dialog id="history-dialog" aria-labelledby="history-title"><div class="dialog-head"><h2 id="history-title">Son analizler</h2><div><button id="refresh-history" aria-label="Geçmişi yenile">↻</button><button id="close-history" aria-label="Geçmişi kapat">✕</button></div></div><div id="history" class="history"></div></dialog>
+  <dialog id="evidence-dialog" aria-labelledby="evidence-title"><div class="dialog-head"><div><span class="eyebrow">KAYNAĞIN BİLDİRDİĞİ KANIT</span><h2 id="evidence-title"></h2></div><button id="close-dialog" aria-label="Kanıt penceresini kapat">✕</button></div><p id="evidence-reason"></p><div class="evidence-columns"><section><h3>Ora</h3><pre id="ora-evidence"></pre></section><section><h3>AgentReady</h3><pre id="oss-evidence"></pre></section></div></dialog>
+</body>
+</html>

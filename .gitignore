@@ -1,0 +1,28 @@
+# Local settings and credentials
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# Python environment and generated files
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local scan history and runtime artifacts
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.log
+
+# Editor and dependency output
+.idea/
+.vscode/
+node_modules/
