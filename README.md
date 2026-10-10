@@ -19,6 +19,7 @@ Probes domain readiness for AI agents via the Ora API, with Cloudflare's isitage
   - Automatically recovers from process crashes on startup by marking `pending`/`running` jobs as `interrupted`.
   - Persists verbatim raw JSON reports alongside normalized granular checks.
 - **Fault-Tolerant Parallel Orchestration (`app/orchestrator.py`)**:
+  - Marketing playbook (`app/adapters/growth.py`): social profiles linked from the home page and blog presence, recency and cadence (RSS/Atom feed, falling back to sitemap dates). The UI has a Normal (marketing) / Agent (readiness) toggle.
   - Runs Ora and Cloudflare in parallel with per-source fault isolation; the UI shows a partial report as soon as the first source lands.
 - **Non-Destructive Status Normalization**:
   - Preserves `UNKNOWN`, `NA`, and `WARNING` states without coercing them to `FAIL`.
@@ -38,6 +39,7 @@ app/
     base.py              # Adapter ABC & CheckRecord dataclass
     ora.py               # Ora API adapter (with rate limiter & polling)
     cloudflare.py        # isitagentready.com fallback adapter
+    growth.py            # marketing playbook: socials + blog checks
   orchestrator.py        # Concurrent adapter orchestration & fault isolation
 tests/
   test_safe_fetch.py

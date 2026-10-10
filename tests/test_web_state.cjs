@@ -17,7 +17,7 @@ function setup(fetchData) {
     };
   }
   const get = id => { if (!nodes.has(id)) nodes.set(id, node()); return nodes.get(id); };
-  const context = vm.createContext({ document: { getElementById: get, createElement: node },
+  const context = vm.createContext({ document: { getElementById: get, createElement: node, querySelectorAll: () => [], body: { dataset: {} } },
     AbortSignal, setTimeout() {}, fetch: async url => ({ ok: true, headers: { get: () => 'application/json' }, json: () => fetchData(url) }),
   });
   const code = fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8').replace(/initialize\(\);\s*$/, '');
@@ -119,6 +119,19 @@ test('a non-final score is never displayed', () => {
   ui.renderReport(value);
   assert.equal(String(ui.get('score-total').textContent), '57.5');
   assert.ok(!ui.get('score-total').parentElement.classes.has('pending'));
+});
+
+test('marketing section renders its own score, actions and profiles', () => {
+  const ui = setup(() => ({}));
+  const value = report();
+  value.marketing = {score: {total: 40, coverage: 100, final: true, breakdown: {}}, source: {}, checks: [
+    {check_id: 'social.profiles', category: 'social', title: 'Social profiles linked', scoring_status: 'PASS', message: 'Found 1', details: {profiles: {X: 'https://x.com/acme'}}},
+    {check_id: 'content.blog', category: 'content', title: 'Has a blog', scoring_status: 'FAIL', message: 'No blog'},
+  ]};
+  ui.renderReport(value);
+  assert.equal(String(ui.get('mk-score-total').textContent), '40');
+  assert.equal(ui.get('mk-action-list').children.length, 1);
+  assert.equal(ui.get('mk-findings').children[0].children[1].children[1].children[2].children[0].textContent, 'X · https://x.com/acme');
 });
 
 test('running scan without any source report stays on the loading view', async () => {

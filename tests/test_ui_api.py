@@ -85,11 +85,14 @@ class LiveBackendTests(unittest.TestCase):
         cf_raw = json.dumps({"checks": {"discoverability": {"linkHeaders": {"status": "fail"}}}})
         async def fake_scan(self, domain, job_id):
             return AdapterResult(source_id="ora", status="completed", raw_report=raw, checks=[], error=None)
+        async def fake_growth_scan(self, domain, job_id):
+            return AdapterResult(source_id="growth", status="failed", raw_report=None, checks=[], error="offline")
         async def fake_cf_scan(self, domain, job_id):
             return AdapterResult(source_id="cloudflare", status="completed", raw_report=cf_raw, checks=[], error=None)
         with tempfile.TemporaryDirectory() as tmp, patch.object(Config, "DB_PATH", tmp + "/scan.db"), \
                 patch("app.adapters.ora.OraAdapter.scan", fake_scan), \
-                patch("app.adapters.cloudflare.CloudflareAdapter.scan", fake_cf_scan):
+                patch("app.adapters.cloudflare.CloudflareAdapter.scan", fake_cf_scan), \
+                patch("app.adapters.growth.GrowthAdapter.scan", fake_growth_scan):
             backend = live_backend()
             job_id = backend["create"]("example.com")
             for _ in range(50):

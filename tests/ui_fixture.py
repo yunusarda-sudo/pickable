@@ -27,8 +27,18 @@ CLOUDFLARE = {
                       "mcpServerCard": {"status": "fail", "message": "TEST: Card absent"}},
     },
 }
+GROWTH = {
+    "scanner": "pickable-growth 0.1", "url": "https://example.com/", "scannedAt": "2026-10-10T12:00:02Z",
+    "checks": {
+        "social": {"socialProfiles": {"status": "pass", "message": "TEST: Found 2 social profile(s): LinkedIn, X.",
+                                      "details": {"profiles": {"LinkedIn": "https://linkedin.com/company/example", "X": "https://x.com/example"}}}},
+        "content": {"blogExists": {"status": "pass", "message": "TEST: Blog found at https://example.com/blog."},
+                    "blogRecent": {"status": "pass", "message": "TEST: Latest post was 12 day(s) ago (target: within 60)."},
+                    "blogCadence": {"status": "fail", "message": "TEST: 1 post(s) in the last 90 days (target: 3+)."}},
+    },
+}
 
 
 def fixture_runs():
     return [{"source_id": source, "status": "completed", "finished_at": raw["scannedAt"], "raw_report": deepcopy(raw)}
-            for source, raw in (("ora", ORA), ("cloudflare", CLOUDFLARE))]
+            for source, raw in (("ora", ORA), ("cloudflare", CLOUDFLARE), ("growth", GROWTH))]

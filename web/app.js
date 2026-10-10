@@ -36,7 +36,7 @@ function returnToLanding() {
 function clearReport() {
   state.report = null; state.jobId = null; state.renderedKey = null;
   $("results").hidden = true; $("empty-state").hidden = false;
-  for (const id of ["download-report", "ora-raw", "cloudflare-raw"]) $(id).removeAttribute("href");
+  for (const id of ["download-report", "ora-raw", "cloudflare-raw", "growth-raw"]) $(id).removeAttribute("href");
   $("evidence-dialog").close();
   updateSources();
 }
@@ -190,23 +190,84 @@ function renderReportExperience(report) {
   }
 }
 
+// Score hero + layer strip; prefix "" = agent readiness, "mk-" = marketing playbook.
+function renderScore(score, prefix) {
+  const pending = score.final === false;  // never show a number a still-running source could change
+  $(prefix + "score-total").parentElement.classList.toggle("pending", pending);
+  if (pending) { const spinner = element("span", "spinner"); spinner.setAttribute("role", "status"); spinner.setAttribute("aria-label", "Calculating score"); $(prefix + "score-total").replaceChildren(spinner); }
+  else $(prefix + "score-total").textContent = score.total ?? "—";
+  $(prefix + "score-coverage").textContent = pending ? "Waiting for the remaining sources before scoring." : `${score.coverage}% weighted measurement coverage${score.coverage < 100 ? " · incomplete coverage" : ""}`;
+  $(prefix + "layers").replaceChildren();
+  for (const layer of Object.values(score.breakdown || {})) {
+    const row = element("div", "layer"); const track = element("div", "layer-track"); const fill = element("div", "layer-fill"); if (pending) track.classList.add("loading");
+    fill.style.width = `${pending || layer.points === null ? 0 : Math.min(100, Math.max(0, layer.points / layer.max_points * 100))}%`; track.append(fill);
+    row.append(element("span", "", layer.label), track, element("span", "layer-value", pending ? "Calculating" : layer.points === null ? "Not measured" : `${layer.points}/${layer.max_points}`));
+    row.title = `${layer.measured}/${layer.defined} checks measured`; $(prefix + "layers").append(row);
+  }
+}
+
+const marketingCopy = {
+  social: ["Social presence", "Can visitors find and follow your brand?", "01"],
+  content: ["Content & blog", "Do you publish content, and keep it fresh?", "02"],
+};
+const marketingGuidance = {
+  "social.profiles": ["Social links let visitors verify your brand and follow you.", "Link your active social profiles (e.g. LinkedIn, X, Instagram) from the site header or footer."],
+  "content.blog": ["A blog brings in search traffic and gives people a reason to come back.", "Start a blog (e.g. /blog) and link it from your main navigation."],
+  "content.blog_recent": ["A recently updated blog signals an active, trustworthy business.", "Publish a new post; aim for at least one every month or two."],
+  "content.blog_cadence": ["Posting regularly compounds search traffic and audience growth.", "Plan a simple content calendar with at least one post a month."],
+};
+function renderMarketing(marketing) {
+  const model = modelReport(marketing);
+  renderScore(marketing.score, "mk-");
+  $("mk-headline").textContent = marketing.score.final === false ? "Calculating your score" : marketing.score.total === null ? "We couldn't read your site." : model.failed ? "There is room to grow." : model.uncertain ? "Good basics, incomplete picture." : "Your marketing basics look solid.";
+  $("mk-summary").textContent = marketing.source?.error ? `The marketing checks could not load your site: ${marketing.source.error}` : `${model.passed} of ${marketing.checks.length} playbook checks passed, ${model.failed} need work.`;
+  $("mk-counts").replaceChildren();
+  for (const [count, label, tone] of [[model.passed,"Passed","positive"],[model.failed,"Missing","negative"],[model.uncertain,"Not scored","neutral"]]) {
+    const item = element("div", "count-item " + tone); item.append(element("strong", "", count), element("span", "", label)); $("mk-counts").append(item);
+  }
+  $("mk-action-count").textContent = `${model.actions.length} checks`;
+  $("mk-action-list").replaceChildren();
+  for (const [index, check] of model.actions.entries()) {
+    const card = element("article", "action-card");
+    card.append(element("span", "action-number", String(index + 1).padStart(2,"0")), element("h3", "", check.title), element("p", "", marketingGuidance[check.check_id]?.[1] || check.measurement_definition), element("small", "action-basis", "Pickable marketing playbook"));
+    $("mk-action-list").append(card);
+  }
+  if (!model.actions.length) $("mk-action-list").append(element("p", "report-empty", marketing.score.final === false ? "Checking your site now." : "No gaps found in the playbook checks."));
+  $("mk-findings").replaceChildren();
+  for (const [key, copy] of Object.entries(marketingCopy)) {
+    const section = element("section", "finding-category"); const heading = element("div", "category-heading"); const titles = element("div");
+    titles.append(element("span", "category-number", copy[2]), element("h3", "", copy[0]), element("p", "", copy[1])); heading.append(titles); section.append(heading);
+    for (const check of marketing.checks.filter(c => c.category === key)) {
+      const row = element("details", "finding-row"); const summary = element("summary");
+      summary.append(badge(check.scoring_status), element("span", "finding-title", check.title), element("span", "finding-arrow", "+")); row.append(summary);
+      const body = element("div", "finding-body");
+      body.append(element("p", "finding-purpose", marketingGuidance[check.check_id]?.[0] || check.measurement_definition));
+      if (check.message) body.append(element("p", "finding-context", check.message));
+      const profiles = check.details?.profiles;
+      if (profiles && typeof profiles === "object") {
+        const list = element("ul", "profile-list");
+        for (const [network, url] of Object.entries(profiles)) list.append(element("li", "", `${network} · ${scalar(url)}`));
+        body.append(list);
+      }
+      row.append(body); section.append(row);
+    }
+    $("mk-findings").append(section);
+  }
+}
+
+function setMode(mode) {
+  state.mode = mode === "agent" ? "agent" : "normal";
+  document.body.dataset.mode = state.mode;
+  for (const button of document.querySelectorAll("[data-mode-button]")) button.setAttribute("aria-pressed", String(button.dataset.modeButton === state.mode));
+  try { localStorage.setItem("pickable-mode", state.mode); } catch {}
+}
+
 function renderReport(report) {
   state.report = report;
   $("empty-state").hidden = true; $("results").hidden = false;
   $("report-domain").textContent = report.domain;
   $("report-time").textContent = `${formatTime(report.scanned_at)} · Mapping ${report.mapping_version || "0.1"}${state.config?.mode === "demo" ? " · TEST DATA" : ""}`;
-  const pending = report.score.final === false;  // never show a number a still-running source could change
-  $("score-total").parentElement.classList.toggle("pending", pending);
-  if (pending) { const spinner = element("span", "spinner"); spinner.setAttribute("role", "status"); spinner.setAttribute("aria-label", "Calculating score"); $("score-total").replaceChildren(spinner); }
-  else $("score-total").textContent = report.score.total ?? "—";
-  $("score-coverage").textContent = pending ? "Waiting for the remaining sources before scoring." : `${report.score.coverage}% weighted measurement coverage${report.score.coverage < 100 ? " · incomplete coverage" : ""}`;
-  $("layers").replaceChildren();
-  for (const layer of Object.values(report.score.breakdown)) {
-    const row = element("div", "layer"); const track = element("div", "layer-track"); const fill = element("div", "layer-fill"); if (pending) track.classList.add("loading");
-    fill.style.width = `${pending || layer.points === null ? 0 : Math.min(100, Math.max(0, layer.points / layer.max_points * 100))}%`; track.append(fill);
-    row.append(element("span", "", layer.label), track, element("span", "layer-value", pending ? "Calculating" : layer.points === null ? "Not measured" : `${layer.points}/${layer.max_points}`));
-    row.title = `${layer.measured}/${layer.defined} checks measured`; $("layers").append(row);
-  }
+  renderScore(report.score, "");
   updateSources(report.sources); renderChecks();
   const specific = report.source_specific || [];
   $("specific-title").textContent = `Source-specific findings (${specific.length})`;
@@ -221,8 +282,9 @@ function renderReport(report) {
   for (const fix of recommendations) $("recommendations").append(element("pre", "", typeof fix === "string" ? fix : JSON.stringify(fix, null, 2)));
   if (!recommendations.length) $("recommendations").append(element("p", "", "Ora did not provide recommendations in this report. Per-check explanations are in the evidence dialog."));
   const root = `/api/scans/${encodeURIComponent(state.jobId)}`;
-  $("download-report").href = root + "/report"; $("ora-raw").href = root + "/raw/ora"; $("cloudflare-raw").href = root + "/raw/cloudflare";
+  $("download-report").href = root + "/report"; $("ora-raw").href = root + "/raw/ora"; $("cloudflare-raw").href = root + "/raw/cloudflare"; $("growth-raw").href = root + "/raw/growth";
   renderReportExperience(report);
+  if (report.marketing) renderMarketing(report.marketing);
   setView("report");
 }
 
@@ -288,7 +350,10 @@ $("new-analysis").addEventListener("click", returnToLanding);
 $("cancel-analysis").addEventListener("click", returnToLanding);
 $("open-history").addEventListener("click", () => { refreshHistory(); $("history-dialog").showModal(); });
 $("close-history").addEventListener("click", () => $("history-dialog").close());
+for (const button of document.querySelectorAll("[data-mode-button]")) button.addEventListener("click", () => setMode(button.dataset.modeButton));
 async function initialize() {
+  let saved = null; try { saved = localStorage.getItem("pickable-mode"); } catch {}
+  setMode(saved || "normal");
   setView("landing");
   try {
     state.config = await api("/api/config"); state.token = state.config.csrf_token;

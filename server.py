@@ -42,12 +42,13 @@ def demo_backend():
 
 def live_backend():
     from app.adapters.cloudflare import CloudflareAdapter
+    from app.adapters.growth import GrowthAdapter
     from app.adapters.ora import OraAdapter
     from app.config import Config
     from app.orchestrator import Orchestrator
     from app.storage import Storage
     storage = Storage(Config.DB_PATH)
-    orchestrator = Orchestrator(adapters=[OraAdapter(), CloudflareAdapter()], storage=storage)
+    orchestrator = Orchestrator(adapters=[OraAdapter(), CloudflareAdapter(), GrowthAdapter()], storage=storage)
     pending = queue.Queue()
 
     def worker():

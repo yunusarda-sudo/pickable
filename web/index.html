@@ -3,28 +3,28 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#141714">
-  <title>Pickable — Is your site ready for agents?</title>
+  <title>Pickable — Is your site ready to grow?</title>
   <link rel="stylesheet" href="/styles.css"><script src="/app.js" defer></script>
 </head>
 <body>
   <header class="site-header">
     <a class="brand" href="/" aria-label="Pickable home"><span class="brand-mark">p</span>pickable<span class="brand-dot">.</span></a>
-    <nav aria-label="Main navigation"><span id="demo-badge" class="demo-badge" hidden>DEMO MODE</span><button id="open-history" class="nav-button">History <span aria-hidden="true">↗</span></button></nav>
+    <nav aria-label="Main navigation"><span id="demo-badge" class="demo-badge" hidden>DEMO MODE</span><div class="mode-toggle" role="group" aria-label="Report mode"><button data-mode-button="normal" aria-pressed="true">Normal</button><button data-mode-button="agent" aria-pressed="false">Agent</button></div><button id="open-history" class="nav-button">History <span aria-hidden="true">↗</span></button></nav>
   </header>
   <main>
     <section id="landing-view" class="landing" aria-labelledby="landing-title">
       <div class="hero-orbit" aria-hidden="true"></div>
       <div class="eyebrow hero-kicker"><span class="live-dot"></span> BE VISIBLE IN THE AGENT ERA</div>
-      <h1 id="landing-title">Is your site<br><em>agent-ready?</em></h1>
-      <p class="hero-description">See your website through the eyes of AI.</p>
+      <h1 id="landing-title"><span class="mode-normal">Is your site<br><em>ready to grow?</em></span><span class="mode-agent">Is your site<br><em>agent-ready?</em></span></h1>
+      <p class="hero-description">See your website through the eyes of customers and AI agents.</p>
       <form id="scan-form" class="domain-form">
         <label for="domain" class="sr-only">Public domain to scan</label>
         <span class="input-globe" aria-hidden="true">◎</span>
         <input id="domain" name="domain" placeholder="yoursite.com" required maxlength="253" autocomplete="url" spellcheck="false" autocapitalize="none">
         <button id="scan-button" type="submit" aria-label="Start scan"><span>Scan</span><span aria-hidden="true">↗</span></button>
       </form>
-      <p class="hero-note">Enter your domain. Discover what you have ready and what is missing.</p>
-      <div class="hero-bottom" aria-hidden="true"><span>01 / DISCOVERABILITY</span><span>02 / READABILITY</span><span>03 / USABILITY</span></div>
+      <p class="hero-note">Enter your domain. Get a marketing playbook check and an agent-readiness report.</p>
+      <div class="hero-bottom" aria-hidden="true"><span>01 / SOCIAL PRESENCE</span><span>02 / CONTENT &amp; BLOG</span><span>03 / AGENT READINESS</span></div>
     </section>
     <section id="loading-view" class="loading-view" aria-labelledby="loading-title" aria-busy="true" hidden>
       <div class="scan-orbit" aria-hidden="true"><span>p</span></div>
@@ -36,9 +36,21 @@
     <div id="report-view" class="report-view" hidden>
       <div class="report-nav"><button id="new-analysis" class="text-button">← New scan</button><a id="download-report" class="report-download" download>Download report ↗</a></div>
       <section id="results" hidden>
-        <div class="report-identity"><span class="report-site-icon" aria-hidden="true">◎</span><div><h2 id="report-domain" tabindex="-1"></h2><p id="report-time"></p></div><span class="report-version">AGENT READINESS / 01</span></div>
+        <div class="report-identity"><span class="report-site-icon" aria-hidden="true">◎</span><div><h2 id="report-domain" tabindex="-1"></h2><p id="report-time"></p></div><span class="report-version"><span class="mode-normal">MARKETING PLAYBOOK</span><span class="mode-agent">AGENT READINESS</span></span></div>
+        <div id="marketing-report" class="mode-normal">
+          <section class="report-hero" aria-label="Marketing summary">
+            <div class="report-score"><div class="eyebrow">MARKETING PLAYBOOK SCORE</div><div class="score-number"><strong id="mk-score-total">—</strong><span>/100</span></div><p id="mk-score-coverage" class="score-coverage"></p></div>
+            <div class="report-assessment"><span class="assessment-label">OVERVIEW</span><h3 id="mk-headline"></h3><p id="mk-summary"></p><div id="mk-counts" class="report-counts"></div></div>
+          </section>
+          <div id="mk-layers" class="report-layer-strip" aria-label="Marketing layer scores"></div>
+          <div class="report-body">
+            <section class="action-section" aria-labelledby="mk-actions-title"><div class="section-heading"><div><span class="section-index">01 / NEXT STEPS</span><h2 id="mk-actions-title">Where should you start?</h2></div><span id="mk-action-count" class="section-aside"></span></div><p class="section-description">Suggestions for playbook checks your site is missing.</p><div id="mk-action-list" class="action-list"></div></section>
+            <section aria-labelledby="mk-findings-title"><div class="section-heading"><div><span class="section-index">02 / PLAYBOOK CHECKS</span><h2 id="mk-findings-title">Marketing basics</h2></div><span class="section-aside">Open a check for details</span></div><div id="mk-findings"></div><div class="raw-links"><a id="growth-raw" download>Playbook raw JSON ↓</a></div></section>
+          </div>
+        </div>
+        <div id="agent-report" class="mode-agent">
         <section class="report-hero" aria-label="Scan summary">
-          <div class="report-score"><div class="eyebrow">PICKABLE PRELIMINARY SCORE</div><div class="score-number"><strong id="score-total">—</strong><span>/100</span></div><p id="score-coverage"></p></div>
+          <div class="report-score"><div class="eyebrow">PICKABLE PRELIMINARY SCORE</div><div class="score-number"><strong id="score-total">—</strong><span>/100</span></div><p id="score-coverage" class="score-coverage"></p></div>
           <div class="report-assessment"><span class="assessment-label">OVERVIEW</span><h3 id="report-headline"></h3><p id="report-summary"></p><div id="report-counts" class="report-counts"></div></div>
         </section>
         <div id="layers" class="report-layer-strip" aria-label="Layer scores"></div>
@@ -55,6 +67,7 @@
       <details class="specific"><summary id="specific-title">Source-specific findings</summary><div id="specific-list"></div></details>
       <details class="specific"><summary>Recommendations and original reports</summary><div id="recommendations"></div><div class="raw-links"><a id="ora-raw" download>Ora raw JSON ↓</a><a id="cloudflare-raw" download>Cloudflare raw JSON ↓</a></div><p class="form-note">Each source's original score, checks and recommendation order are kept in its raw report.</p></details>
           </div></details>
+        </div>
         </div>
       </section>
     </div>

@@ -17,6 +17,15 @@ DEFINITIONS = [
     ("auth.protected_resource", "Protected Resource", "usability", "oauth-protected-resource", "oauthProtectedResource", "Protected Resource metadata; the sign-in flow itself is not tested."),
     ("integration.mcp_card", "MCP server card", "usability", "mcp-server-card", "mcpServerCard", "MCP server card discovery."),
 ]
+# Marketing playbook (Pickable's own "growth" checker). (canonical id, title, category, growth id, definition)
+MARKETING_WEIGHTS = {"social": 40, "content": 60}
+MARKETING_LAYERS = {"social": "Social presence", "content": "Content & blog"}
+MARKETING_DEFINITIONS = [
+    ("social.profiles", "Social profiles linked", "social", "socialProfiles", "Links from the home page to the brand's social profiles."),
+    ("content.blog", "Has a blog", "content", "blogExists", "A blog index or RSS/Atom feed linked from the home page."),
+    ("content.blog_recent", "Blog updated recently", "content", "blogRecent", "Latest dated post is recent (feed or sitemap dates)."),
+    ("content.blog_cadence", "Posts regularly", "content", "blogCadence", "Enough posts in the last 90 days to show a steady cadence."),
+]
 NORMALIZED = {"pass": "PASS", "fail": "FAIL", "warn": "WARNING", "warning": "WARNING", "na": "NOT_APPLICABLE", "skip": "NOT_APPLICABLE", "not_applicable": "NOT_APPLICABLE"}
 NO_EVIDENCE = "No definitive PASS/FAIL evidence. Warnings, N/A and access errors are excluded from the score."
 
@@ -37,7 +46,7 @@ def report_from_job(job, source_runs, pending=()):
     sources = {}
     for run in source_runs:
         source = run.get("source_id")
-        if source not in SOURCES:
+        if source not in SOURCES + ("growth",):
             continue
         raw, error = run.get("raw_report"), run.get("error")
         if isinstance(raw, str):
@@ -84,9 +93,9 @@ def observation(cid, rows, envelope):
             "raw": raw, "observed_at": envelope.get("observed_at"), "attribution": "source_reported"}
 
 
-def score_checks(checks):
+def score_checks(checks, weights=WEIGHTS, layer_names=LAYER_NAMES):
     breakdown, earned, coverage, any_measured = {}, 0, 0, False
-    for category, weight in WEIGHTS.items():
+    for category, weight in weights.items():
         rows = [c for c in checks if c["category"] == category]
         valid = [c for c in rows if c["scoring_status"] in ("PASS", "FAIL")]
         points = round(weight * sum(c["scoring_status"] == "PASS" for c in valid) / len(valid), 1) if valid else None
@@ -95,7 +104,7 @@ def score_checks(checks):
         if points is not None:
             earned += points
             any_measured = True
-        breakdown[category] = {"label": LAYER_NAMES[category], "points": points, "max_points": weight, "measured": len(valid), "defined": len(rows), "coverage": round(layer_coverage * 100, 1)}
+        breakdown[category] = {"label": layer_names[category], "points": points, "max_points": weight, "measured": len(valid), "defined": len(rows), "coverage": round(layer_coverage * 100, 1)}
     total = round(earned, 1) if any_measured else None
     return {"total": total, "grade": None if total is None else next(g for threshold, g in [(90, "A"), (80, "B"), (70, "C"), (60, "D"), (0, "F")] if total >= threshold),
             "coverage": round(coverage, 1), "breakdown": breakdown, "rubric_version": "pickable-0.1",
@@ -145,4 +154,22 @@ def build_report(domain, sources, pending=()):
         recommendations = []
     return {"schema_version": "0.1", "mapping_version": "2026-10-10.2", "domain": domain, "scanned_at": now(),
             "sources": summaries, "checks": checks, "score": {**score_checks(checks), "final": not any(c["scoring_status"] == "PENDING" for c in checks)},
-            "source_specific": specific, "recommendations": recommendations}
+            "source_specific": specific, "recommendations": recommendations,
+            "marketing": build_marketing(sources.get("growth"), "growth" in pending)}
+
+
+def build_marketing(envelope, pending):
+    envelope = dict(envelope or {"status": "unavailable", "raw": None})
+    raw = envelope.get("raw") if isinstance(envelope.get("raw"), dict) else None
+    rows = flatten("growth", raw)
+    checks = []
+    for cid, title, category, native_id, definition in MARKETING_DEFINITIONS:
+        obs = observation(native_id, rows, envelope)
+        status = "PENDING" if pending else obs["status"]
+        scored = status in ("PASS", "FAIL")
+        checks.append({"check_id": cid, "title": title, "category": category, "measurement_definition": definition,
+                       "sources": {"growth": obs}, "scoring_status": status, "scoring_source": "growth" if scored else None,
+                       "message": text_value((obs["raw"] or {}).get("message")), "details": (obs["raw"] or {}).get("details")})
+    return {"checks": checks, "score": {**score_checks(checks, MARKETING_WEIGHTS, MARKETING_LAYERS), "final": not pending},
+            "source": {"id": "growth", "status": text_value(envelope.get("status")) or "unavailable", "error": text_value(envelope.get("error")),
+                       "observed_at": text_value((raw or {}).get("scannedAt")) or text_value(envelope.get("observed_at"))}}

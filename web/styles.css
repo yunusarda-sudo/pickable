@@ -9,7 +9,13 @@
 .spinner{display:inline-block;width:.55em;height:.55em;border:7px solid #2d3528;border-top-color:var(--acid);border-radius:50%;animation:orbit .9s linear infinite;align-self:center}
 .score-number.pending span:not(.spinner){display:none}
 .score-number .spinner,.report-score .score-number .spinner{font-size:inherit;vertical-align:middle}
-#score-coverage{min-height:2lh}
+.score-coverage{min-height:2lh}
+body[data-mode="agent"] .mode-normal,body:not([data-mode="agent"]) .mode-agent{display:none!important}
+.mode-toggle{display:inline-flex;border:1px solid #3a4434;border-radius:999px;padding:2px;gap:2px}
+.mode-toggle button{border:0;background:transparent;color:inherit;font:inherit;font-size:12px;padding:5px 12px;border-radius:999px;cursor:pointer;opacity:.7}
+.mode-toggle button[aria-pressed="true"]{background:var(--acid);color:#141714;opacity:1}
+.mode-toggle button:focus-visible{outline:2px solid var(--acid);outline-offset:2px}
+.profile-list{margin:8px 0 0;padding-left:18px;font-size:12px;overflow-wrap:anywhere}
 .layer-track.loading .layer-fill{width:35%!important;animation:slide 1.2s ease-in-out infinite}
 @keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(300%)}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}

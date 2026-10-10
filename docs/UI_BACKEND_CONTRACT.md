@@ -11,7 +11,7 @@
     (partial report). The UI renders it and keeps polling until the job is terminal.
 - `GET /api/scans/:id/report` → report JSON (download).
 - `GET /api/scans/:id/raw/:source` → unmodified provider JSON (download).
-- Source ids: `ora`, `cloudflare`. Source statuses:
+- Source ids: `ora`, `cloudflare`, `growth`. Source statuses:
   `pending|running|completed|partial|unavailable|failed|timeout|interrupted`.
 - Host/Origin validation and the scan token are backend responsibilities. CORS stays closed.
 
@@ -41,6 +41,14 @@ report = build_report("randevuo.com.tr", {
 - `score.coverage`: weighted coverage of definitive measurements. `score.rubric_version`: pickable-0.1.
 - Raw provider statuses, scores and recommendation order are preserved. `source_specific` keeps all
   unmapped findings. The UI renders provider text with `textContent` only.
+
+## Marketing playbook
+
+`report.marketing` = `{checks, score, source}`, built from the `growth` source only, scored with its own
+weights (social presence 40, content & blog 60). Checks: social profiles linked, has a blog, blog
+updated within 60 days, 3+ posts in the last 90 days. Post dates come from the RSS/Atom feed, else
+sitemap `lastmod`; when neither has dates the recency checks are UNKNOWN, not FAIL. While `growth`
+is running every check is PENDING and `score.final` is false.
 
 ## Running
 

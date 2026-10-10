@@ -11,6 +11,7 @@ import json
 import sys
 
 from app.adapters.cloudflare import CloudflareAdapter
+from app.adapters.growth import GrowthAdapter
 from app.adapters.ora import OraAdapter
 from app.config import Config
 from app.orchestrator import Orchestrator
@@ -26,7 +27,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
 
     storage = Storage(Config.DB_PATH)
     ora = OraAdapter()
-    orchestrator = Orchestrator(adapters=[ora, CloudflareAdapter()], storage=storage)
+    orchestrator = Orchestrator(adapters=[ora, CloudflareAdapter(), GrowthAdapter()], storage=storage)
 
     job_id = asyncio.run(orchestrator.run_scan(domain))
     job = storage.get_job(job_id)
