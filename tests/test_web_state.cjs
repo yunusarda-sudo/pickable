@@ -11,7 +11,9 @@ function setup(fetchData) {
       append(...children) { this.children.push(...children); },
       replaceChildren(...children) { this.children = children; },
       addEventListener(type, handler) { this.listeners[type] = handler; },
-      removeAttribute(name) { delete this[name]; }, close() {}, showModal() {}, focus() { this.focusCount = (this.focusCount || 0) + 1; this.focusText = this.textContent; },
+      removeAttribute(name) { delete this[name]; }, setAttribute(name, value) { this[name] = value; },
+      classes: new Set(), get classList() { const c = this.classes; return { add: n => c.add(n), toggle: (n, on) => on ? c.add(n) : c.delete(n) }; },
+      get parentElement() { return this.parent || (this.parent = node()); }, close() {}, showModal() {}, focus() { this.focusCount = (this.focusCount || 0) + 1; this.focusText = this.textContent; },
     };
   }
   const get = id => { if (!nodes.has(id)) nodes.set(id, node()); return nodes.get(id); };
@@ -109,11 +111,14 @@ test('a non-final score is never displayed', () => {
   const value = report();
   value.score = {total: 57.5, coverage: 60, final: false, breakdown: {discovery: {label: 'Discoverability', points: 20, max_points: 20}}};
   ui.renderReport(value);
-  assert.equal(ui.get('score-total').textContent, '…');
-  assert.equal(ui.get('layers').children[0].children[2].textContent, '…');
+  assert.equal(ui.get('score-total').children[0].className, 'spinner');
+  assert.ok(ui.get('score-total').parentElement.classes.has('pending'));
+  assert.ok(ui.get('layers').children[0].children[1].classes.has('loading'));
+  assert.equal(ui.get('layers').children[0].children[2].textContent, 'Calculating');
   value.score.final = true;
   ui.renderReport(value);
   assert.equal(String(ui.get('score-total').textContent), '57.5');
+  assert.ok(!ui.get('score-total').parentElement.classes.has('pending'));
 });
 
 test('running scan without any source report stays on the loading view', async () => {

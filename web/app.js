@@ -144,7 +144,7 @@ function evidenceButton(check, label = "View source evidence ↗") {
 }
 function renderReportExperience(report) {
   const model = modelReport(report);
-  $("report-headline").textContent = report.score.final === false ? "Finalizing your score…" : report.score.total === null ? "More evidence needed." : model.failed ? "There is room to improve." : model.uncertain ? "Good signals, incomplete picture." : "Measured checks look good.";
+  $("report-headline").textContent = report.score.final === false ? "Calculating your score" : report.score.total === null ? "More evidence needed." : model.failed ? "There is room to improve." : model.uncertain ? "Good signals, incomplete picture." : "Measured checks look good.";
   $("report-summary").textContent = reportSummary(report);
   $("report-counts").replaceChildren();
   for (const [count, label, tone] of [[model.passed,"Passed","positive"],[model.failed,"Missing","negative"],[model.uncertain,"Not scored","neutral"]]) {
@@ -196,13 +196,15 @@ function renderReport(report) {
   $("report-domain").textContent = report.domain;
   $("report-time").textContent = `${formatTime(report.scanned_at)} · Mapping ${report.mapping_version || "0.1"}${state.config?.mode === "demo" ? " · TEST DATA" : ""}`;
   const pending = report.score.final === false;  // never show a number a still-running source could change
-  $("score-total").textContent = pending ? "…" : report.score.total ?? "—";
+  $("score-total").parentElement.classList.toggle("pending", pending);
+  if (pending) { const spinner = element("span", "spinner"); spinner.setAttribute("role", "status"); spinner.setAttribute("aria-label", "Calculating score"); $("score-total").replaceChildren(spinner); }
+  else $("score-total").textContent = report.score.total ?? "—";
   $("score-coverage").textContent = pending ? "Waiting for the remaining sources before scoring." : `${report.score.coverage}% weighted measurement coverage${report.score.coverage < 100 ? " · incomplete coverage" : ""}`;
   $("layers").replaceChildren();
   for (const layer of Object.values(report.score.breakdown)) {
-    const row = element("div", "layer"); const track = element("div", "layer-track"); const fill = element("div", "layer-fill");
+    const row = element("div", "layer"); const track = element("div", "layer-track"); const fill = element("div", "layer-fill"); if (pending) track.classList.add("loading");
     fill.style.width = `${pending || layer.points === null ? 0 : Math.min(100, Math.max(0, layer.points / layer.max_points * 100))}%`; track.append(fill);
-    row.append(element("span", "", layer.label), track, element("span", "layer-value", pending ? "…" : layer.points === null ? "Not measured" : `${layer.points}/${layer.max_points}`));
+    row.append(element("span", "", layer.label), track, element("span", "layer-value", pending ? "Calculating" : layer.points === null ? "Not measured" : `${layer.points}/${layer.max_points}`));
     row.title = `${layer.measured}/${layer.defined} checks measured`; $("layers").append(row);
   }
   updateSources(report.sources); renderChecks();
