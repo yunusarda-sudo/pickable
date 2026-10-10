@@ -12,13 +12,14 @@ from typing import Any, Dict, List, Optional
 
 
 class Storage:
-    def __init__(self, db_path: str = "./data/scan.db"):
+    def __init__(self, db_path: str = "./data/scan.db", recover_on_startup: bool = True):
         self.db_path = db_path
         os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self._init_schema()
-        self._mark_interrupted_on_startup()
+        if recover_on_startup:
+            self._mark_interrupted_on_startup()
 
     def _init_schema(self) -> None:
         with self.conn:
@@ -168,6 +169,7 @@ class Storage:
             (job_id,),
         )
         return [dict(row) for row in cursor.fetchall()]
+
 
     def close(self) -> None:
         self.conn.close()

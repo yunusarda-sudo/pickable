@@ -178,16 +178,20 @@ def make_server(port, backend, bind="127.0.0.1", allowed_hosts=()):
     return ThreadingHTTPServer((bind, port), Handler)
 
 
+def serve(port, bind, demo=False):
+    # RENDER_EXTERNAL_HOSTNAME is set by Render, so the public URL works without extra config.
+    allowed = [h.strip() for h in (os.environ.get("ALLOWED_HOSTS", "") + "," + os.environ.get("RENDER_EXTERNAL_HOSTNAME", "")).split(",") if h.strip()]
+    server = make_server(port, demo_backend() if demo else live_backend(), bind, allowed)
+    print(f"{'DEMO MODE' if demo else 'LIVE'} — http://{bind}:{server.server_port}", flush=True)
+    try: server.serve_forever()
+    except KeyboardInterrupt: pass
+    finally: server.server_close()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Pickable web server.")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8765)))
     parser.add_argument("--bind", default=os.environ.get("BIND", "127.0.0.1"))
     parser.add_argument("--demo", action="store_true", help="Synthetic test data; no real scans.")
     args = parser.parse_args()
-    # RENDER_EXTERNAL_HOSTNAME is set by Render, so the public URL works without extra config.
-    allowed = [h.strip() for h in (os.environ.get("ALLOWED_HOSTS", "") + "," + os.environ.get("RENDER_EXTERNAL_HOSTNAME", "")).split(",") if h.strip()]
-    server = make_server(args.port, demo_backend() if args.demo else live_backend(), args.bind, allowed)
-    print(f"{'DEMO MODE' if args.demo else 'LIVE'} — http://127.0.0.1:{server.server_port}", flush=True)
-    try: server.serve_forever()
-    except KeyboardInterrupt: pass
-    finally: server.server_close()
+    serve(args.port, args.bind, args.demo)

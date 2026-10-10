@@ -5,7 +5,6 @@ services:
     name: pickable
     runtime: python
     plan: free
-    branch: feat/remove-agentready
     buildCommand: "true"
     startCommand: python3 server.py
     healthCheckPath: /api/config
