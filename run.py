@@ -10,7 +10,8 @@ import asyncio
 import json
 import sys
 
-from app.adapters.agentready_oss import AgentReadyOSSAdapter
+from app.adapters.cloudflare import CloudflareAdapter
+from app.adapters.growth import GrowthAdapter
 from app.adapters.ora import OraAdapter
 from app.config import Config
 from app.orchestrator import Orchestrator
@@ -26,8 +27,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
 
     storage = Storage(Config.DB_PATH)
     ora = OraAdapter()
-    oss = AgentReadyOSSAdapter()
-    orchestrator = Orchestrator(adapters=[ora, oss], storage=storage)
+    orchestrator = Orchestrator(adapters=[ora, CloudflareAdapter(), GrowthAdapter()], storage=storage)
 
     job_id = asyncio.run(orchestrator.run_scan(domain))
     job = storage.get_job(job_id)
@@ -80,18 +80,10 @@ def cmd_show(args: argparse.Namespace) -> int:
 
 
 def cmd_server(args: argparse.Namespace) -> int:
-    from app.server import make_live_server
+    # Kept for the Dockerfile / VPS start command; the web server lives in server.py.
+    from server import serve
 
-    server = make_live_server(port=args.port, host=args.host)
-    print(
-        f"CANLI MOD — http://{args.host}:{server.server_port} — Ora ve AgentReady OSS paralel çalışıyor",
-        flush=True,
-    )
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\nSunucu kapatılıyor...")
-        server.server_close()
+    serve(args.port, args.host)
     return 0
 
 

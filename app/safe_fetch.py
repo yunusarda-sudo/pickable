@@ -40,6 +40,7 @@ class FetchResult:
     body: bytes
     redirect_chain: List[str] = field(default_factory=list)
     resolved_ips: List[str] = field(default_factory=list)
+    final_url: str = ""
 
 
 def is_ip_safe(ip_str: str) -> bool:
@@ -232,6 +233,7 @@ def safe_fetch(
                 body=resp_body,
                 redirect_chain=redirect_chain,
                 resolved_ips=all_resolved_ips,
+                final_url=current_url,
             )
 
         except (socket.timeout, TimeoutError) as e:

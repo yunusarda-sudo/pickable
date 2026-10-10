@@ -12,52 +12,52 @@ from urllib.parse import urlsplit, urljoin
 
 def normalize_domain(value):
     if not isinstance(value, str) or not value.strip() or len(value) > 300:
-        raise ValueError("Geçerli bir public domain girin.")
+        raise ValueError("Enter a valid public domain.")
     value = value.strip()
     if any(c.isspace() or ord(c) < 32 for c in value) or "\\" in value:
-        raise ValueError("Domain boşluk veya ters eğik çizgi içeremez.")
+        raise ValueError("Domain cannot contain spaces or backslashes.")
     parts = urlsplit(value if "://" in value else "https://" + value)
     if (parts.scheme not in ("http", "https") or parts.username is not None
             or parts.password is not None or parts.port is not None
             or parts.path not in ("", "/") or parts.query or parts.fragment
             or "?" in value or "#" in value):
-        raise ValueError("Yalnız domain girin; yol, port, kullanıcı bilgisi eklemeyin.")
+        raise ValueError("Enter just the domain; no path, port or credentials.")
     host = (parts.hostname or "").encode("idna").decode("ascii").lower()
     if not host or len(host) > 253 or host.endswith(".") or "." not in host:
-        raise ValueError("Geçerli bir public domain girin.")
+        raise ValueError("Enter a valid public domain.")
     if host.endswith((".localhost", ".local", ".internal", ".test", ".invalid")):
-        raise ValueError("Yerel veya özel domain taranamaz.")
+        raise ValueError("Local or private domains cannot be scanned.")
     try:
         ipaddress.ip_address(host)
     except ValueError:
         pass
     else:
-        raise ValueError("IP adresi yerine public domain girin.")
+        raise ValueError("Enter a public domain instead of an IP address.")
     if not all(re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
                for label in host.split(".")) or host.split(".")[-1].isdigit():
-        raise ValueError("Domain biçimi geçersiz.")
+        raise ValueError("Invalid domain format.")
     return host
 
 
 def public_addresses(host, port):
     if port not in (80, 443):
-        raise ValueError("Yalnız standart HTTP/HTTPS portlarına izin verilir.")
+        raise ValueError("Only standard HTTP/HTTPS ports are allowed.")
     answers = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     addresses = list(dict.fromkeys(answer[4][0] for answer in answers))
     if not addresses or any(not ipaddress.ip_address(ip).is_global for ip in addresses):
-        raise ValueError("Özel, yerel veya ayrılmış IP adresine erişim engellendi.")
+        raise ValueError("Access to private, local or reserved IP addresses is blocked.")
     return addresses
 
 
 def validate_url(url):
     if not isinstance(url, str) or len(url) > 4096 or "\\" in url or any(ord(c) < 33 for c in url):
-        raise ValueError("Geçersiz hedef URL.")
+        raise ValueError("Invalid target URL.")
     p = urlsplit(url)
     if p.scheme not in ("http", "https") or not p.hostname or p.username is not None or p.password is not None:
-        raise ValueError("HTTP/HTTPS dışı veya kullanıcı bilgili URL engellendi.")
+        raise ValueError("Non-HTTP(S) URLs or URLs with credentials are blocked.")
     port = p.port or (443 if p.scheme == "https" else 80)
     if port != (443 if p.scheme == "https" else 80):
-        raise ValueError("Özel port engellendi.")
+        raise ValueError("Non-standard port blocked.")
     return p, port
 
 
@@ -95,7 +95,7 @@ def request(url, method="GET", headers=None, body=None, timeout=12, follow=True,
         ips = public_addresses(host, port)
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise TimeoutError("İstek zaman aşımına uğradı.")
+            raise TimeoutError("Request timed out.")
         connection = PinnedConnection(host, port, ips[0], p.scheme == "https", remaining)
         try:
             connection.request(method, (p.path or "/") + ("?" + p.query if p.query else ""), body=body, headers=headers)
@@ -105,7 +105,7 @@ def request(url, method="GET", headers=None, body=None, timeout=12, follow=True,
                 target = urljoin(url, response_headers["location"])
                 new, _ = validate_url(target)
                 if p.scheme == "https" and new.scheme != "https":
-                    raise ValueError("HTTPS'ten HTTP'ye yönlendirme engellendi.")
+                    raise ValueError("Redirect from HTTPS to HTTP blocked.")
                 if (new.scheme, new.netloc) != (p.scheme, p.netloc):
                     headers = {k: v for k, v in headers.items() if k.lower() not in ("authorization", "cookie")}
                 if response.status == 303 or (response.status in (301, 302) and method == "POST"):
@@ -117,7 +117,7 @@ def request(url, method="GET", headers=None, body=None, timeout=12, follow=True,
             while len(data) <= max_bytes:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    raise TimeoutError("Yanıt zaman aşımına uğradı.")
+                    raise TimeoutError("Response timed out.")
                 # The response owns a buffered socket file, including Connection: close.
                 if connection.sock:
                     connection.sock.settimeout(remaining)
@@ -126,11 +126,11 @@ def request(url, method="GET", headers=None, body=None, timeout=12, follow=True,
                     break
                 data.extend(chunk)
             if len(data) > max_bytes:
-                raise ValueError("Sağlayıcı yanıt boyutu sınırı aşıldı.")
+                raise ValueError("Provider response size limit exceeded.")
             return Response(url, response.status, response_headers, bytes(data))
         finally:
             connection.close()
-    raise ValueError("Yönlendirme sınırı aşıldı.")
+    raise ValueError("Redirect limit exceeded.")
 
 
 def request_json(url, **options):
@@ -138,8 +138,8 @@ def request_json(url, **options):
     if response.status not in (200, 202):
         retry = response.headers.get("retry-after")
         suffix = f"; Retry-After: {retry}" if retry else ""
-        raise ValueError(f"Sağlayıcı HTTP {response.status}{suffix}")
+        raise ValueError(f"Provider returned HTTP {response.status}{suffix}")
     data = json.loads(response.body)
     if not isinstance(data, dict):
-        raise ValueError("Sağlayıcı geçerli bir JSON nesnesi döndürmedi.")
+        raise ValueError("Provider did not return a valid JSON object.")
     return data

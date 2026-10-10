@@ -85,7 +85,7 @@ class TestStorage(unittest.TestCase):
         )
         self.storage.save_source_run(
             job_id=job_id,
-            source_id="agentready_oss",
+            source_id="mock_b",
             status="failed",
             started_at="2026-10-10T12:00:00Z",
             finished_at="2026-10-10T12:00:02Z",
@@ -97,8 +97,8 @@ class TestStorage(unittest.TestCase):
         runs_by_source = {r["source_id"]: r for r in runs}
         self.assertEqual(runs_by_source["ora"]["status"], "completed")
         self.assertEqual(runs_by_source["ora"]["raw_report"], '{"score": 85}')
-        self.assertEqual(runs_by_source["agentready_oss"]["status"], "failed")
-        self.assertEqual(runs_by_source["agentready_oss"]["error"], "Subprocess exit code 1")
+        self.assertEqual(runs_by_source["mock_b"]["status"], "failed")
+        self.assertEqual(runs_by_source["mock_b"]["error"], "Subprocess exit code 1")
 
     def test_unknown_status_preserved(self):
         """UNKNOWN/NA gibi statuler hicbir yerde degistirilmeden checks tablosunda korunmali"""

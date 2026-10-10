@@ -112,6 +112,11 @@ class Storage:
         row = cursor.fetchone()
         return dict(row) if row else None
 
+    def list_jobs(self, limit: int = 30) -> List[Dict[str, Any]]:
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM jobs ORDER BY started_at DESC LIMIT ?;", (limit,))
+        return [dict(row) for row in cursor.fetchall()]
+
     def save_source_run(
         self,
         job_id: str,
@@ -165,13 +170,6 @@ class Storage:
         )
         return [dict(row) for row in cursor.fetchall()]
 
-    def list_jobs(self, limit: int = 50) -> List[Dict[str, Any]]:
-        cursor = self.conn.cursor()
-        cursor.execute(
-            "SELECT id, domain, status, started_at, finished_at, error FROM jobs ORDER BY started_at DESC LIMIT ?;",
-            (limit,),
-        )
-        return [dict(row) for row in cursor.fetchall()]
 
     def close(self) -> None:
         self.conn.close()

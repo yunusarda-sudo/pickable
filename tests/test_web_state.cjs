@@ -11,11 +11,14 @@ function setup(fetchData) {
       append(...children) { this.children.push(...children); },
       replaceChildren(...children) { this.children = children; },
       addEventListener(type, handler) { this.listeners[type] = handler; },
-      removeAttribute(name) { delete this[name]; }, close() {}, showModal() {}, focus() { this.focusCount = (this.focusCount || 0) + 1; this.focusText = this.textContent; },
+      removeAttribute(name) { delete this[name]; }, setAttribute(name, value) { this[name] = value; },
+      classes: new Set(), get classList() { const c = this.classes; return { add: n => c.add(n), toggle: (n, on) => on ? c.add(n) : c.delete(n) }; },
+      get parentElement() { return this.parent || (this.parent = node()); },
+      get lastElementChild() { return this.children.at(-1) || this.last || (this.last = node()); }, close() {}, showModal() {}, focus() { this.focusCount = (this.focusCount || 0) + 1; this.focusText = this.textContent; },
     };
   }
   const get = id => { if (!nodes.has(id)) nodes.set(id, node()); return nodes.get(id); };
-  const context = vm.createContext({ document: { getElementById: get, createElement: node },
+  const context = vm.createContext({ document: { getElementById: get, createElement: node, querySelectorAll: () => [], body: { dataset: {} } },
     AbortSignal, setTimeout() {}, fetch: async url => ({ ok: true, headers: { get: () => 'application/json' }, json: () => fetchData(url) }),
   });
   const code = fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8').replace(/initialize\(\);\s*$/, '');
@@ -54,7 +57,7 @@ test('superseded history failure cannot unlock current scan or replace its notic
 
 test('missing or non-string timestamps never become epoch dates', () => {
   const ui = setup(() => ({}));
-  for (const value of [null, undefined, false, 0, [], {}, 'invalid']) assert.equal(ui.formatTime(value), 'Zaman bilgisi yok');
+  for (const value of [null, undefined, false, 0, [], {}, 'invalid']) assert.equal(ui.formatTime(value), 'No timestamp');
 });
 
 test('malformed provider summaries and recommendation containers render safely', () => {
@@ -71,12 +74,12 @@ test('non-string native fields are displayed as JSON without coercion or evidenc
   const ui = setup(() => ({}));
   const bad = report();
   const native = {toString: 0};
-  bad.checks = [{title:'Native status', match_type:'partial', sources:{ora:{status:'UNKNOWN', native_status:native}, agentready_oss:{status:'UNKNOWN'}}, scoring_status:'UNKNOWN', reason:'Test'}];
+  bad.checks = [{title:'Native status', sources:{ora:{status:'UNKNOWN', native_status:native}}, scoring_status:'UNKNOWN', reason:'Test'}];
   bad.source_specific = [{source:'ora', source_check_id:'extra', raw:{name:native, title:native, status:native}}];
   bad.recommendations = [{recommendation:native}];
   const before = JSON.stringify(bad);
   assert.doesNotThrow(() => ui.renderReport(bad));
-  assert.equal(ui.get('checks').children[0].children[1].children[1].textContent, 'Kaynak: {"toString":0}');
+  assert.equal(ui.get('checks').children[0].children[1].children[1].textContent, 'Native: {"toString":0}');
   assert.match(ui.get('specific-list').children[0].children[0].textContent, /\{"toString":0\}/);
   assert.match(ui.get('recommendations').children[0].textContent, /"toString": 0/);
   assert.equal(JSON.stringify(bad), before);
@@ -92,16 +95,54 @@ test('initialization presents only the domain landing view before any scan', asy
   assert.equal(ui.state.token, 'test-token');
 });
 
-test('pending scan keeps a partial report hidden until analysis is terminal', async () => {
+test('running scan shows a partial report as soon as one exists and keeps polling', async () => {
   const partial = report();
-  const ui = setup(() => ({status:'running', sources:[], report:partial}));
+  const ui = setup(() => ({status:'running', sources:[{id:'cloudflare', status:'completed'}], report:partial}));
   await ui.loadScan('pending', ui.state.generation);
-  assert.equal(ui.get('landing-view').hidden, true);
+  assert.equal(ui.get('loading-view').hidden, true);
+  assert.equal(ui.get('report-view').hidden, false);
+  assert.equal(ui.get('results').hidden, false);
+  assert.equal(ui.get('scan-button').disabled, true);
+  assert.match(ui.get('notice').textContent, /Partial results/);
+  assert.equal(ui.get('ora-state').textContent, 'Waiting');
+});
+
+test('a non-final score is never displayed', () => {
+  const ui = setup(() => ({}));
+  const value = report();
+  value.score = {total: 57.5, coverage: 60, final: false, breakdown: {discovery: {label: 'Discoverability', points: 20, max_points: 20}}};
+  ui.renderReport(value);
+  assert.equal(ui.get('score-total').children[0].className, 'spinner');
+  assert.ok(ui.get('score-total').parentElement.classes.has('pending'));
+  assert.ok(ui.get('layers').children[0].children[1].classes.has('loading'));
+  assert.equal(ui.get('layers').children[0].children[2].textContent, 'Calculating');
+  value.score.final = true;
+  ui.renderReport(value);
+  assert.equal(String(ui.get('score-total').textContent), '57.5');
+  assert.ok(!ui.get('score-total').parentElement.classes.has('pending'));
+});
+
+test('marketing section renders its own score, actions and profiles', () => {
+  const ui = setup(() => ({}));
+  const value = report();
+  value.marketing = {score: {total: 40, coverage: 100, final: true, breakdown: {}}, source: {}, checks: [
+    {check_id: 'social.profiles', category: 'social', title: 'Social profiles linked', scoring_status: 'PASS', message: 'Found 1', details: {profiles: {X: 'https://x.com/acme'}}},
+    {check_id: 'content.blog', category: 'content', title: 'Has a blog', scoring_status: 'FAIL', message: 'No blog'},
+  ]};
+  ui.renderReport(value);
+  assert.equal(String(ui.get('mk-score-total').textContent), '40');
+  assert.equal(ui.get('mk-action-list').children.length, 1);
+  assert.equal(ui.get('mk-findings').children[0].children[1].children[1].children[2].children[0].textContent, 'X · https://x.com/acme');
+});
+
+test('running scan without any source report stays on the loading view', async () => {
+  const ui = setup(() => ({status:'running', sources:[{id:'growth', status:'completed'}], report:null}));
+  await ui.loadScan('pending', ui.state.generation);
+  assert.equal(ui.get('step-growth').className, 'done');
+  assert.equal(ui.get('step-ora').className, '');
+  assert.equal(ui.get('loading-progress-fill').style.width, '33%');
   assert.equal(ui.get('loading-view').hidden, false);
   assert.equal(ui.get('report-view').hidden, true);
-  assert.equal(ui.get('results').hidden, true);
-  assert.equal(ui.get('download-report').href, undefined);
-  assert.equal(ui.get('scan-button').disabled, true);
 });
 
 test('terminal scan enters the report view and supplies its own download link', async () => {
@@ -130,7 +171,7 @@ test('new analysis invalidates in-flight requests and returns to the clean landi
   assert.equal(ui.get('report-view').hidden, true);
   assert.equal(ui.state.report, null);
   assert.equal(ui.state.jobId, null);
-  for (const id of ['download-report', 'ora-raw', 'oss-raw']) assert.equal(ui.get(id).href, undefined);
+  for (const id of ['download-report', 'ora-raw']) assert.equal(ui.get(id).href, undefined);
   assert.equal(ui.get('scan-button').disabled, false);
   resolveScan({status:'completed', sources:[], report:report()});
   await pending;
@@ -167,29 +208,11 @@ test('report overview counts scoring results without treating unmeasured checks 
   assert.equal(model.passed, 1);
   assert.equal(model.failed, 1);
   assert.equal(model.uncertain, 3);
-  assert.equal(model.different, 0);
   assert.equal(model.actions.length, 1);
   assert.equal(model.actions[0], value.checks[1]);
   assert.equal(JSON.stringify(value), before);
 });
 
-test('native differences include partial matches but do not manufacture action failures', () => {
-  const ui = setup(() => ({}));
-  const value = report();
-  value.checks = [
-    {check_id:'partial', match_type:'partial', scoring_status:'FAIL', sources:{ora:{status:'PASS'}, agentready_oss:{status:'FAIL'}}},
-    {check_id:'different', match_type:'equivalent', scoring_status:'UNKNOWN', sources:{ora:{status:'FAIL'}, agentready_oss:{status:'PASS'}}},
-    {check_id:'agreement', scoring_status:'FAIL', sources:{ora:{status:'FAIL'}, agentready_oss:{status:'FAIL'}}},
-    {check_id:'unmeasured', scoring_status:'NOT_APPLICABLE', sources:{}},
-  ];
-  const model = ui.modelReport(value);
-  assert.equal(model.different, 2);
-  assert.equal(model.failed, 2);
-  assert.equal(model.uncertain, 2);
-  assert.equal(model.actions.length, 2);
-  assert.equal(model.actions[0], value.checks[0]);
-  assert.equal(model.actions[1], value.checks[2]);
-});
 
 test('empty report overview remains unmeasured and handles missing checks safely', () => {
   const ui = setup(() => ({}));
@@ -199,7 +222,6 @@ test('empty report overview remains unmeasured and handles missing checks safely
     assert.equal(model.passed, 0);
     assert.equal(model.failed, 0);
     assert.equal(model.uncertain, 0);
-    assert.equal(model.different, 0);
-    assert.equal(model.actions.length, 0);
+      assert.equal(model.actions.length, 0);
   }
 });

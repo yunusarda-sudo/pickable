@@ -3,13 +3,13 @@ import threading
 import unittest
 import urllib.request
 import urllib.error
-from ui_preview import make_server
+from server import make_server, demo_backend
 
 
 class UIPreviewTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.server = make_server(0)
+        cls.server = make_server(0, demo_backend())
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
         cls.base = f"http://127.0.0.1:{cls.server.server_port}"
@@ -38,12 +38,14 @@ class UIPreviewTests(unittest.TestCase):
         job = json.loads(raw)
         self.assertEqual(job["status"], "completed")
         self.assertEqual(len(job["report"]["checks"]), 7)
-        self.assertEqual(job["report"]["checks"][1]["combined_status"], "DIFFERENT")
+        self.assertEqual(job["report"]["checks"][1]["combined_status"], "FAIL")
         _, raw, headers = self.request(f"/api/scans/{job_id}/raw/ora")
         self.assertIn("attachment", headers["Content-Disposition"])
         self.assertEqual(json.loads(raw)["layers"][0]["checks"][1]["status"], "fail")
         _, raw, _ = self.request("/api/scans")
         self.assertIn(job_id, raw.decode())
+        _, raw, _ = self.request(f"/api/scans/{job_id}/preview")
+        self.assertEqual(json.loads(raw)["preview"]["url"], "https://example.com/")
 
     def test_scan_without_token_is_rejected(self):
         status, _, _ = self.request("/api/scans", {"domain": "example.com"}, {"Content-Type": "application/json"})
@@ -72,3 +74,38 @@ class UIPreviewTests(unittest.TestCase):
 
 
 if __name__ == "__main__": unittest.main()
+
+
+class LiveBackendTests(unittest.TestCase):
+    def test_queued_scan_completes_with_report_and_raw(self):
+        import tempfile, time
+        from unittest.mock import patch
+        from app.adapters.base import AdapterResult
+        from app.config import Config
+        from server import live_backend
+        raw = json.dumps({"layers": [{"checks": [{"id": "sitemap", "status": "pass"}, {"id": "link-headers-discovery", "status": "warning"}]}]})
+        cf_raw = json.dumps({"checks": {"discoverability": {"linkHeaders": {"status": "fail"}}}})
+        async def fake_scan(self, domain, job_id):
+            return AdapterResult(source_id="ora", status="completed", raw_report=raw, checks=[], error=None)
+        async def fake_growth_scan(self, domain, job_id):
+            return AdapterResult(source_id="growth", status="failed", raw_report=None, checks=[], error="offline")
+        async def fake_cf_scan(self, domain, job_id):
+            return AdapterResult(source_id="cloudflare", status="completed", raw_report=cf_raw, checks=[], error=None)
+        with tempfile.TemporaryDirectory() as tmp, patch.object(Config, "DB_PATH", tmp + "/scan.db"), \
+                patch("app.adapters.ora.OraAdapter.scan", fake_scan), \
+                patch("app.adapters.cloudflare.CloudflareAdapter.scan", fake_cf_scan), \
+                patch("app.adapters.growth.GrowthAdapter.scan", fake_growth_scan):
+            backend = live_backend()
+            job_id = backend["create"]("example.com")
+            for _ in range(50):
+                job = backend["get"](job_id)
+                if job["status"] == "completed": break
+                time.sleep(0.05)
+            self.assertEqual(job["status"], "completed")
+            self.assertEqual(job["report"]["checks"][0]["scoring_status"], "PASS")
+            self.assertEqual(job["report"]["checks"][0]["scoring_source"], "ora")
+            # Ora only warned on link headers, so Cloudflare's definitive FAIL is the fallback
+            self.assertEqual(job["report"]["checks"][1]["scoring_status"], "FAIL")
+            self.assertEqual(job["report"]["checks"][1]["scoring_source"], "cloudflare")
+            self.assertEqual(backend["raw"](job_id, "ora")["layers"][0]["checks"][0]["id"], "sitemap")
+            self.assertEqual(backend["list"]()[0]["id"], job_id)

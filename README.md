@@ -2,7 +2,7 @@
 
 Multi-source Agent Readiness Reporting backend core in pure Python standard library (3.12+).
 
-Probes domain readiness for AI agents across independent sources (Ora API and Python AgentReady scanner), stores verbatim raw reports and normalized checks in SQLite, and provides resilient SSRF protection and parallel execution.
+Probes domain readiness for AI agents via the Ora API, with Cloudflare's isitagentready.com as a per-check fallback, stores verbatim raw reports and normalized checks in SQLite, and provides resilient SSRF protection and parallel execution.
 
 ---
 
@@ -19,8 +19,8 @@ Probes domain readiness for AI agents across independent sources (Ora API and Py
   - Automatically recovers from process crashes on startup by marking `pending`/`running` jobs as `interrupted`.
   - Persists verbatim raw JSON reports alongside normalized granular checks.
 - **Fault-Tolerant Parallel Orchestration (`app/orchestrator.py`)**:
-  - Runs Ora and AgentReady OSS scanners concurrently.
-  - Fault isolation: one source failure or timeout never cancels or pollutes the other source.
+  - Marketing playbook (`app/adapters/growth.py`): social profiles linked from the home page and blog presence, recency and cadence (RSS/Atom feed, falling back to sitemap dates). The UI has a Normal (marketing) / Agent (readiness) toggle.
+  - Runs Ora and Cloudflare in parallel with per-source fault isolation; the UI shows a partial report as soon as the first source lands.
 - **Non-Destructive Status Normalization**:
   - Preserves `UNKNOWN`, `NA`, and `WARNING` states without coercing them to `FAIL`.
 
@@ -38,7 +38,8 @@ app/
     __init__.py
     base.py              # Adapter ABC & CheckRecord dataclass
     ora.py               # Ora API adapter (with rate limiter & polling)
-    agentready_oss.py    # Isolated subprocess runner for Python AgentReady
+    cloudflare.py        # isitagentready.com fallback adapter
+    growth.py            # marketing playbook: socials + blog checks
   orchestrator.py        # Concurrent adapter orchestration & fault isolation
 tests/
   test_safe_fetch.py
@@ -48,10 +49,8 @@ tests/
   test_core.py
   fixtures/
     ora_sample.json
-    oss_sample.json
 examples/
   randevuo-ora.json      # Sample live Ora output
-  randevuo-oss.json      # Sample live AgentReady OSS output
 docs/
   DECISIONS.md           # Architecture decision records
 run.py                   # CLI entry point
@@ -79,6 +78,15 @@ python3 -m unittest discover tests/ -v
 ```
 
 ---
+
+## Web UI
+
+```bash
+python3 server.py            # live Ora scans → http://127.0.0.1:8765
+python3 server.py --demo     # synthetic fixture data, no network
+```
+
+Env: `PORT`, `BIND` (use `0.0.0.0` on a host), `ALLOWED_HOSTS` (comma-separated public host names, e.g. `pickable.example.com`), `DB_PATH`, `ORA_API_KEY`.
 
 ## CLI Usage
 

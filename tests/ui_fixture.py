@@ -12,28 +12,33 @@ ORA = {
         {"id": "mcp-oauth-metadata", "name": "MCP OAuth metadata", "status": "pass", "details": "TEST: OAuth metadata found at MCP host."},
         {"id": "oauth-protected-resource", "name": "Protected Resource", "status": "na", "details": "TEST: Authentication not assessed."},
         {"id": "mcp-server-card", "name": "MCP server card", "status": "fail", "details": "TEST: Card absent."},
-        {"id": "future-check", "name": "Ek içerik kontrolü", "status": "warning", "details": "<img src=x onerror=alert('xss')> TEST: must remain plain text."},
+        {"id": "future-check", "name": "Extra content check", "status": "warning", "details": "<img src=x onerror=alert('xss')> TEST: must remain plain text."},
     ]}],
     "topFixes": [{"id": "link-headers-discovery", "recommendation": "TEST: Link header ekleyin."}],
 }
-OSS = {
-    "scanner": "agent_ready_scan.py 1.0.0", "level": 1, "levelName": "Basic Web Presence",
-    "scannedAt": "2026-10-10T12:00:01Z", "checks": {
-        "discoverability": {
-            "sitemap": {"title": "XML sitemap", "status": "pass", "message": "TEST: Valid sitemap", "evidence": [{"label": "GET /sitemap.xml", "outcome": "positive", "summary": "HTTP 200"}]},
-            "linkHeaders": {"title": "Link headers", "status": "pass", "message": "TEST: Different observation", "details": {"header": "</sitemap.xml>; rel=sitemap"}},
-        },
-        "extended": {"llmsTxt": {"title": "llms.txt", "status": "fail", "message": "TEST: No root /llms.txt"}},
-        "contentAccessibility": {"markdownNegotiation": {"title": "Markdown", "status": "warn", "message": "TEST: Explicit markdown route only"}},
-        "discovery": {
-            "oauthDiscovery": {"title": "OAuth metadata", "status": "fail", "message": "TEST: No root metadata"},
-            "oauthProtectedResource": {"title": "Protected resource", "status": "skip", "message": "TEST: Not applicable"},
-            "mcpServerCard": {"title": "Server card", "status": "error", "message": "TEST: Request timeout"},
-        },
+CLOUDFLARE = {
+    "url": "https://example.com", "scannedAt": "2026-10-10T12:00:01Z", "level": 1, "levelName": "Basic Web Presence",
+    "checks": {
+        "discoverability": {"sitemap": {"status": "pass", "message": "TEST: sitemap.xml exists"},
+                            "linkHeaders": {"status": "fail", "message": "TEST: No Link header"}},
+        "contentAccessibility": {"markdownNegotiation": {"status": "fail", "message": "TEST: Markdown not negotiated"}},
+        "discovery": {"oauthDiscovery": {"status": "fail", "message": "TEST: No OAuth metadata"},
+                      "oauthProtectedResource": {"status": "neutral", "message": "TEST: Not applicable"},
+                      "mcpServerCard": {"status": "fail", "message": "TEST: Card absent"}},
+    },
+}
+GROWTH = {
+    "scanner": "pickable-growth 0.1", "url": "https://example.com/", "scannedAt": "2026-10-10T12:00:02Z",
+    "checks": {
+        "social": {"socialProfiles": {"status": "pass", "message": "TEST: Found 2 social profile(s): LinkedIn, X.",
+                                      "details": {"profiles": {"LinkedIn": "https://linkedin.com/company/example", "X": "https://x.com/example"}}}},
+        "content": {"blogExists": {"status": "pass", "message": "TEST: Blog found at https://example.com/blog."},
+                    "blogRecent": {"status": "pass", "message": "TEST: Latest post was 12 day(s) ago (target: within 60)."},
+                    "blogCadence": {"status": "fail", "message": "TEST: 1 post(s) in the last 90 days (target: 3+)."}},
     },
 }
 
 
 def fixture_runs():
     return [{"source_id": source, "status": "completed", "finished_at": raw["scannedAt"], "raw_report": deepcopy(raw)}
-            for source, raw in (("ora", ORA), ("agentready_oss", OSS))]
+            for source, raw in (("ora", ORA), ("cloudflare", CLOUDFLARE), ("growth", GROWTH))]

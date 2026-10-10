@@ -1,9 +1,15 @@
+# Render Blueprint: free Python web service, no dependencies to install.
+# Free instances sleep after ~15 min idle; the first request then takes ~1 min to wake.
 services:
   - type: web
     name: pickable
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python run.py server --port $PORT --host 0.0.0.0
+    runtime: python
+    plan: free
+    buildCommand: "true"
+    startCommand: python3 server.py
+    healthCheckPath: /api/config
     envVars:
+      - key: BIND
+        value: 0.0.0.0
       - key: PYTHON_VERSION
-        value: 3.10.13
+        value: 3.12.3

@@ -3,6 +3,8 @@ services:
   web:
     build: .
     restart: unless-stopped
+    environment:
+      - ALLOWED_HOSTS=solveny.dev,www.solveny.dev
     volumes:
       - ./data:/app/data
     networks:
