@@ -2,8 +2,23 @@ version: '3.8'
 services:
   web:
     build: .
-    ports:
-      - "8765:8765"
     restart: unless-stopped
     volumes:
       - ./data:/app/data
+    networks:
+      - root_default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pickable-http.entrypoints=web"
+      - "traefik.http.routers.pickable-http.middlewares=redirect-to-https"
+      - "traefik.http.routers.pickable-http.rule=Host(`solveny.dev`, `www.solveny.dev`)"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.pickable-https.entrypoints=websecure"
+      - "traefik.http.routers.pickable-https.rule=Host(`solveny.dev`, `www.solveny.dev`)"
+      - "traefik.http.routers.pickable-https.tls=true"
+      - "traefik.http.routers.pickable-https.tls.certresolver=myhttpchallenge"
+      - "traefik.http.services.pickable.loadbalancer.server.port=8765"
+
+networks:
+  root_default:
+    external: true
