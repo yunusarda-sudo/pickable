@@ -1,0 +1,9 @@
+version: '3.8'
+services:
+  web:
+    build: .
+    ports:
+      - "8765:8765"
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
