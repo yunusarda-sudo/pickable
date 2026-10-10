@@ -47,6 +47,52 @@ class LinkParser(HTMLParser):
             self.feeds.append(a["href"])
 
 
+class MetaParser(HTMLParser):
+    """<title>, description, og:image and icon from a page head."""
+    def __init__(self):
+        super().__init__()
+        self.meta, self.title, self._in_title, self.icon = {}, "", False, None
+
+    def handle_starttag(self, tag, attrs):
+        a = {k: v or "" for k, v in attrs}
+        if tag == "meta" and a.get("content"):
+            self.meta.setdefault((a.get("property") or a.get("name") or "").lower(), a["content"])
+        elif tag == "link" and "icon" in a.get("rel", "").lower() and a.get("href") and not self.icon:
+            self.icon = a["href"]
+        self._in_title = tag == "title"
+
+    def handle_endtag(self, tag):
+        self._in_title = False if tag == "title" else self._in_title
+
+    def handle_data(self, data):
+        if self._in_title and len(self.title) < 200:
+            self.title += data
+
+
+def page_preview(html, base):
+    """Preview card data; only https image URLs are returned (the browser loads them directly)."""
+    parser = MetaParser()
+    parser.feed(html)
+    m = parser.meta
+    https = lambda u: u if u and urlsplit(u).scheme == "https" else None
+    return {"url": base,
+            "title": (m.get("og:title") or parser.title).strip()[:200] or None,
+            "description": (m.get("og:description") or m.get("description") or "").strip()[:300] or None,
+            "image": https(urljoin(base, m.get("og:image") or m.get("twitter:image") or "") if (m.get("og:image") or m.get("twitter:image")) else None),
+            "icon": https(urljoin(base, parser.icon or "/favicon.ico"))}
+
+
+def fetch_preview(domain, timeout=8):
+    """Quick home-page fetch for the loading screen; None if the site is slow or unreachable."""
+    try:
+        res = safe_fetch(f"https://{domain}/", headers=HEADERS, timeout=timeout)
+    except Exception:
+        return None
+    if res.status != 200:
+        return None
+    return page_preview(res.body.decode("utf-8", errors="replace"), res.final_url or f"https://{domain}/")
+
+
 def parse_links(html, base):
     parser = LinkParser()
     parser.feed(html)

@@ -44,6 +44,8 @@ class UIPreviewTests(unittest.TestCase):
         self.assertEqual(json.loads(raw)["layers"][0]["checks"][1]["status"], "fail")
         _, raw, _ = self.request("/api/scans")
         self.assertIn(job_id, raw.decode())
+        _, raw, _ = self.request(f"/api/scans/{job_id}/preview")
+        self.assertEqual(json.loads(raw)["preview"]["url"], "https://example.com/")
 
     def test_scan_without_token_is_rejected(self):
         status, _, _ = self.request("/api/scans", {"domain": "example.com"}, {"Content-Type": "application/json"})

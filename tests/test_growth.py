@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 import unittest
 
-from app.adapters.growth import activity, build_checks, feed_dates, find_blog, parse_links, sitemap_entries, social_profiles
+from app.adapters.growth import page_preview, activity, build_checks, feed_dates, find_blog, parse_links, sitemap_entries, social_profiles
 from app.reporting import build_report
 
 NOW = datetime(2026, 10, 10, tzinfo=timezone.utc)
@@ -53,6 +53,13 @@ class GrowthParsingTests(unittest.TestCase):
         waiting = build_report("example.com", {}, pending=["growth"])["marketing"]
         self.assertFalse(waiting["score"]["final"])
         self.assertTrue(all(c["scoring_status"] == "PENDING" for c in waiting["checks"]))
+
+    def test_preview_reads_head_and_only_keeps_https_images(self):
+        html = """<head><title> Acme </title><meta property="og:image" content="/og.png">
+            <meta name="description" content="We sell things"><link rel="icon" href="http://example.com/i.ico"></head>"""
+        preview = page_preview(html, HOME)
+        self.assertEqual((preview["title"], preview["description"], preview["image"]), ("Acme", "We sell things", "https://example.com/og.png"))
+        self.assertIsNone(preview["icon"])  # plain-http icon is dropped
 
 
 if __name__ == "__main__":

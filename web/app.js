@@ -249,6 +249,41 @@ function renderMarketing(marketing) {
   }
 }
 
+// Loading screen: site preview (from the site's own og:image/title) and real per-source progress.
+function resetPreview(domain) {
+  $("preview-url").textContent = domain;
+  $("preview-title").textContent = domain; $("preview-description").textContent = "";
+  $("preview-image").hidden = true; $("preview-image").removeAttribute("src");
+  $("preview-icon").hidden = true; $("preview-icon").removeAttribute("src");
+  $("preview-card").hidden = false;
+  updateSteps([]);
+}
+function showPreview(preview) {
+  if (!preview || typeof preview !== "object") return;
+  if (scalar(preview.title)) $("preview-title").textContent = preview.title;
+  if (scalar(preview.description)) $("preview-description").textContent = preview.description;
+  const https = (url) => typeof url === "string" && url.startsWith("https://");
+  if (https(preview.icon)) { const icon = $("preview-icon"); icon.onerror = () => { icon.hidden = true; }; icon.onload = () => { icon.hidden = false; }; icon.src = preview.icon; }
+  if (https(preview.image)) { const image = $("preview-image"); image.onerror = () => { image.hidden = true; $("preview-card").hidden = false; }; image.onload = () => { image.hidden = false; $("preview-card").hidden = true; }; image.src = preview.image; }
+}
+function loadPreview(id, generation) {
+  api(`/api/scans/${encodeURIComponent(id)}/preview`).then((r) => { if (generation === state.generation) showPreview(r.preview); }).catch(() => {});
+}
+function updateSteps(sources = []) {
+  const list = Array.isArray(sources) ? sources : [];
+  let done = 0;
+  for (const id of ["growth", "ora", "cloudflare"]) {
+    const status = scalar(list.find((s) => s && (s.id || s.source_id) === id)?.status, "running");
+    const finished = !["running", "pending"].includes(status);
+    done += finished;
+    $("step-" + id).className = status === "completed" ? "done" : finished ? "failed" : "";
+    $("step-" + id).lastElementChild.textContent = status === "completed" ? "Done" : finished ? "Unavailable" : "";
+  }
+  const percent = Math.max(6, Math.round(done / 3 * 100));
+  $("loading-progress-fill").style.width = percent + "%";
+  $("loading-progress-fill").parentElement.setAttribute("aria-valuenow", String(percent));
+}
+
 function setMode(mode) {
   state.mode = mode === "agent" ? "agent" : "normal";
   document.body.dataset.mode = state.mode;
@@ -289,6 +324,7 @@ async function loadScan(id, generation) {
   state.jobId = id;
   const status = result.status || result.job?.status;
   updateSources(result.sources || result.source_runs || result.report?.sources);
+  updateSteps(result.sources);
   if (["pending", "queued", "running"].includes(status)) {
     const key = JSON.stringify(result.sources || []);
     if (result.report && key !== state.renderedKey) { state.renderedKey = key; renderReport(result.report); updateSources(result.sources); }  // live job status beats the partial report's "unavailable" placeholder
@@ -316,7 +352,7 @@ async function refreshHistory() {
       button.append(element("small", "", `${formatTime(job.created_at)} · ${sourceLabels[job.status] || job.status}`));
       button.addEventListener("click", () => {
         const generation = ++state.generation;
-        clearReport(); busy(true); $("history-dialog").close(); setView("loading"); $("loading-domain").textContent = job.domain; notify("Loading saved scan…");
+        clearReport(); busy(true); $("history-dialog").close(); setView("loading"); $("loading-domain").textContent = job.domain; resetPreview(job.domain); loadPreview(job.id || job.job_id, generation); notify("Loading saved scan…");
         loadScan(job.id || job.job_id, generation).catch((error) => { if (generation === state.generation) { busy(false); setView("landing"); notify(error.message); } });
       });
       $("history").append(button);
@@ -327,13 +363,14 @@ async function refreshHistory() {
 
 $("scan-form").addEventListener("submit", async (event) => {
   event.preventDefault(); const generation = ++state.generation; busy(true); notify("");
-  clearReport(); setView("loading"); $("loading-domain").textContent = $("domain").value.trim();
+  clearReport(); setView("loading"); $("loading-domain").textContent = $("domain").value.trim(); resetPreview($("domain").value.trim());
   try {
     if (!state.config) throw new Error("Backend is not ready. Reload the page or start the backend.");
     const result = await api("/api/scans", { method: "POST", body: JSON.stringify({ domain: $("domain").value.trim() }) });
     if (generation !== state.generation) return;
     const id = result.job_id || result.id;
     if (!id) throw new Error("Backend did not return a scan id.");
+    loadPreview(id, generation);
     await loadScan(id, generation);
   } catch (error) { if (generation === state.generation) { busy(false); setView("landing"); notify(error.message); } }
 });

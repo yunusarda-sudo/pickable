@@ -36,7 +36,8 @@ def demo_backend():
     def raw(job_id, source):
         return next((r["raw_report"] for r in fixture_runs() if r["source_id"] == source), None) if job_id in jobs else None
 
-    return {"mode": "demo", "create": create, "get": jobs.get, "raw": raw,
+    preview = lambda job_id: job_id in jobs and {"url": f"https://{jobs[job_id]['domain']}/", "title": "Example Domain (test data)", "description": "Demo mode does not fetch the site.", "image": None, "icon": None}
+    return {"mode": "demo", "create": create, "get": jobs.get, "raw": raw, "preview": preview,
             "list": lambda: [{k: v for k, v in job.items() if k not in ("report", "sources")} for job in reversed(list(jobs.values()))]}
 
 
@@ -91,7 +92,17 @@ def live_backend():
     def list_jobs():
         return [{"id": r["id"], "domain": r["domain"], "status": r["status"], "created_at": r["started_at"]} for r in storage.list_jobs()]
 
-    return {"mode": "live", "create": create, "get": get, "raw": raw, "list": list_jobs}
+    from app.adapters.growth import fetch_preview
+    previews = {}
+
+    def preview(job_id):
+        # ponytail: unbounded in-memory cache and the growth checker re-fetches the home page; fine at demo scale
+        if not previews.get(job_id):  # failures aren't cached, so a later request can retry
+            job = storage.get_job(job_id)
+            previews[job_id] = fetch_preview(job["domain"]) if job else None
+        return previews[job_id]
+
+    return {"mode": "live", "create": create, "get": get, "raw": raw, "list": list_jobs, "preview": preview}
 
 
 def make_server(port, backend, bind="127.0.0.1", allowed_hosts=()):
@@ -105,7 +116,7 @@ def make_server(port, backend, bind="127.0.0.1", allowed_hosts=()):
             self.send_header("Content-Length", str(len(content)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+            self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
             if filename:
                 self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
             self.end_headers()
@@ -136,6 +147,7 @@ def make_server(port, backend, bind="127.0.0.1", allowed_hosts=()):
                 job = backend["get"](parts[2])
                 if job:
                     if len(parts) == 3: self.send(job); return
+                    if parts[3:] == ["preview"]: self.send({"preview": backend["preview"](parts[2]) or None}); return
                     if parts[3:] == ["report"] and job["report"]: self.send(job["report"], filename="pickable-report.json"); return
                     if len(parts) == 5 and parts[3] == "raw":
                         raw = backend["raw"](parts[2], parts[4])

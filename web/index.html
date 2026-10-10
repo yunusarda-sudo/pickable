@@ -27,11 +27,32 @@
       <div class="hero-bottom" aria-hidden="true"><span>01 / SOCIAL PRESENCE</span><span>02 / CONTENT &amp; BLOG</span><span>03 / AGENT READINESS</span></div>
     </section>
     <section id="loading-view" class="loading-view" aria-labelledby="loading-title" aria-busy="true" hidden>
-      <div class="scan-orbit" aria-hidden="true"><span>p</span></div>
-      <div class="eyebrow">SCAN IN PROGRESS</div>
-      <h1 id="loading-title" tabindex="-1">In a moment,<br><em>you will see clearly.</em></h1>
-      <p id="loading-domain"></p><p class="loading-note">Collecting source reports and matching findings.</p>
-      <button id="cancel-analysis" class="text-button">Back to start</button>
+      <div class="loading-grid">
+        <figure class="site-preview" aria-label="Website preview">
+          <div class="preview-bar"><span class="preview-dots" aria-hidden="true"><i></i><i></i><i></i></span><span id="preview-url" class="preview-url"></span></div>
+          <div class="preview-body">
+            <img id="preview-image" alt="" hidden>
+            <div id="preview-card" class="preview-card">
+              <img id="preview-icon" class="preview-icon" alt="" hidden>
+              <strong id="preview-title" class="preview-title"></strong>
+              <p id="preview-description" class="preview-description"></p>
+              <div class="preview-skeleton" aria-hidden="true"><i></i><i></i><i></i></div>
+            </div>
+          </div>
+        </figure>
+        <div class="loading-steps">
+          <div class="eyebrow loading-kicker">ANALYZING</div>
+          <h1 id="loading-title" tabindex="-1">Checking <span id="loading-domain"></span></h1>
+          <p class="loading-note">Usually takes 5–20 seconds. Results appear as soon as each check finishes.</p>
+          <ul class="step-list">
+            <li id="step-growth"><span class="step-icon" aria-hidden="true"></span>Social profiles &amp; blog activity<span class="step-state"></span></li>
+            <li id="step-ora"><span class="step-icon" aria-hidden="true"></span>Agent discovery checks<span class="step-state"></span></li>
+            <li id="step-cloudflare"><span class="step-icon" aria-hidden="true"></span>Agent compatibility checks<span class="step-state"></span></li>
+          </ul>
+          <div class="loading-progress" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100"><div id="loading-progress-fill"></div></div>
+          <button id="cancel-analysis" class="text-button">Back to start</button>
+        </div>
+      </div>
     </section>
     <div id="report-view" class="report-view" hidden>
       <div class="report-nav"><button id="new-analysis" class="text-button">← New scan</button><a id="download-report" class="report-download" download>Download report ↗</a></div>

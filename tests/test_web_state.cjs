@@ -13,7 +13,8 @@ function setup(fetchData) {
       addEventListener(type, handler) { this.listeners[type] = handler; },
       removeAttribute(name) { delete this[name]; }, setAttribute(name, value) { this[name] = value; },
       classes: new Set(), get classList() { const c = this.classes; return { add: n => c.add(n), toggle: (n, on) => on ? c.add(n) : c.delete(n) }; },
-      get parentElement() { return this.parent || (this.parent = node()); }, close() {}, showModal() {}, focus() { this.focusCount = (this.focusCount || 0) + 1; this.focusText = this.textContent; },
+      get parentElement() { return this.parent || (this.parent = node()); },
+      get lastElementChild() { return this.children.at(-1) || this.last || (this.last = node()); }, close() {}, showModal() {}, focus() { this.focusCount = (this.focusCount || 0) + 1; this.focusText = this.textContent; },
     };
   }
   const get = id => { if (!nodes.has(id)) nodes.set(id, node()); return nodes.get(id); };
@@ -135,8 +136,11 @@ test('marketing section renders its own score, actions and profiles', () => {
 });
 
 test('running scan without any source report stays on the loading view', async () => {
-  const ui = setup(() => ({status:'running', sources:[], report:null}));
+  const ui = setup(() => ({status:'running', sources:[{id:'growth', status:'completed'}], report:null}));
   await ui.loadScan('pending', ui.state.generation);
+  assert.equal(ui.get('step-growth').className, 'done');
+  assert.equal(ui.get('step-ora').className, '');
+  assert.equal(ui.get('loading-progress-fill').style.width, '33%');
   assert.equal(ui.get('loading-view').hidden, false);
   assert.equal(ui.get('report-view').hidden, true);
 });
