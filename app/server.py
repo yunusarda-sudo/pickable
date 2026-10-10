@@ -57,18 +57,7 @@ def make_live_server(port: int = 8765, host: str = "127.0.0.1") -> ThreadingHTTP
             self.wfile.write(content)
 
         def allowed(self) -> bool:
-            allowed_hosts = {
-                f"127.0.0.1:{self.server.server_port}",
-                f"localhost:{self.server.server_port}",
-            }
-            host_header = self.headers.get("Host")
-            if host_header not in allowed_hosts:
-                self.send({"error": "Host engellendi."}, 403)
-                return False
-            origin = self.headers.get("Origin")
-            if origin and origin != f"http://{host_header}":
-                self.send({"error": "Origin engellendi."}, 403)
-                return False
+            # Allow any host for Render deployment
             return True
 
         def do_GET(self):
