@@ -1,0 +1,21 @@
+{
+  "linkset": [
+    {
+      "anchor": "https://solveny.dev/.well-known/api-catalog",
+      "item": [
+        {"href": "https://solveny.dev/api/config", "type": "application/json", "title": "Read CSRF token and service mode"},
+        {"href": "https://solveny.dev/api/scans", "type": "application/json", "title": "List or create public-domain scans"},
+        {"href": "https://solveny.dev/api/health", "type": "application/json", "title": "Read service health"}
+      ],
+      "service-desc": [
+        {"href": "https://solveny.dev/openapi.json", "type": "application/json", "title": "Pickable OpenAPI 3.1 description"}
+      ],
+      "service-doc": [
+        {"href": "https://solveny.dev/api", "type": "text/html", "title": "Pickable API guide"}
+      ],
+      "status": [
+        {"href": "https://solveny.dev/api/health", "type": "application/json", "title": "Pickable service health"}
+      ]
+    }
+  ]
+}

@@ -3,27 +3,52 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#141714">
-  <title>Pickable — Is your site ready to grow?</title>
+  <meta name="description" content="See how easily customers and AI agents can discover your public website. Pickable combines agent-readiness signals with a simple marketing playbook.">
+  <link rel="canonical" href="https://solveny.dev/">
+  <link rel="alternate" type="text/markdown" href="https://solveny.dev/index.md">
+  <link rel="service-desc" type="application/json" href="/openapi.json">
+  <link rel="alternate" type="text/plain" href="/llms.txt">
+  <link rel="icon" type="image/svg+xml" href="/pickable-rise-favicon.svg">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Pickable">
+  <meta property="og:title" content="Pickable — Is your site ready to grow?">
+  <meta property="og:description" content="See how easily customers and AI agents can discover your public website.">
+  <meta property="og:url" content="https://solveny.dev/">
+  <meta property="og:image" content="https://solveny.dev/pickable-og.svg">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://solveny.dev/#website","name":"Pickable","url":"https://solveny.dev/"},{"@type":"SoftwareApplication","@id":"https://solveny.dev/#software","name":"Pickable","applicationCategory":"BusinessApplication","operatingSystem":"Web browser","description":"A public website analysis demo that combines AI-agent readiness observations with basic marketing visibility checks.","url":"https://solveny.dev/","isPartOf":{"@id":"https://solveny.dev/#website"}}]}</script>
   <link rel="stylesheet" href="/styles.css"><script src="/app.js" defer></script>
 </head>
 <body>
   <header class="site-header">
-    <a class="brand" href="/" aria-label="Pickable home"><span class="brand-mark">p</span>pickable<span class="brand-dot">.</span></a>
+    <a class="brand" href="/" aria-label="Pickable home"><img class="brand-mark" src="/pickable-rise.svg" width="38" height="38" alt="">pickable<span class="brand-dot">.</span></a>
     <nav aria-label="Main navigation"><span id="demo-badge" class="demo-badge" hidden>DEMO MODE</span><div class="mode-toggle" role="group" aria-label="Report mode"><button data-mode-button="normal" aria-pressed="true">Normal</button><button data-mode-button="agent" aria-pressed="false">Agent</button></div><button id="open-history" class="nav-button">History <span aria-hidden="true">↗</span></button></nav>
   </header>
   <main>
     <section id="landing-view" class="landing" aria-labelledby="landing-title">
       <div class="hero-orbit" aria-hidden="true"></div>
+      <div class="discovery-field" aria-hidden="true">
+        <svg class="field-links" viewBox="0 0 1200 560" preserveAspectRatio="none" focusable="false">
+          <path d="M110 160 L235 208 L320 118 M1080 130 L965 205 L885 150 M115 430 L250 375 M1085 450 L970 390" />
+          <circle cx="110" cy="160" r="5" /><circle cx="235" cy="208" r="3" /><circle cx="320" cy="118" r="4" />
+          <circle cx="1080" cy="130" r="5" /><circle cx="965" cy="205" r="3" /><circle cx="885" cy="150" r="4" />
+          <circle cx="115" cy="430" r="5" /><circle cx="250" cy="375" r="3" /><circle cx="1085" cy="450" r="5" /><circle cx="970" cy="390" r="3" />
+        </svg>
+        <span class="field-label field-social">SOCIAL PRESENCE</span>
+        <span class="field-label field-discovery">DISCOVERABILITY</span>
+        <span class="field-label field-content">CONTENT &amp; BLOG</span>
+        <span class="field-label field-compatibility">AGENT COMPATIBILITY</span>
+      </div>
       <div class="eyebrow hero-kicker"><span class="live-dot"></span> BE VISIBLE IN THE AGENT ERA</div>
       <h1 id="landing-title"><span class="mode-normal">Is your site<br><em>ready to grow?</em></span><span class="mode-agent">Is your site<br><em>agent-ready?</em></span></h1>
       <p class="hero-description">See your website through the eyes of customers and AI agents.</p>
       <form id="scan-form" class="domain-form">
-        <label for="domain" class="sr-only">Public domain to scan</label>
+        <label for="domain" class="sr-only">Public website URL to scan</label>
         <span class="input-globe" aria-hidden="true">◎</span>
-        <input id="domain" name="domain" placeholder="yoursite.com" required maxlength="253" autocomplete="url" spellcheck="false" autocapitalize="none">
+        <input id="domain" name="url" placeholder="https://yoursite.com/product" required maxlength="2000" autocomplete="url" spellcheck="false" autocapitalize="none">
         <button id="scan-button" type="submit" aria-label="Start scan"><span>Scan</span><span aria-hidden="true">↗</span></button>
       </form>
-      <p class="hero-note">Enter your domain. Get a marketing playbook check and an agent-readiness report.</p>
+      <p class="hero-note">Enter a public website URL. Readiness checks cover its domain; product analysis reads the exact URL.</p>
       <div class="hero-bottom" aria-hidden="true"><span>01 / SOCIAL PRESENCE</span><span>02 / CONTENT &amp; BLOG</span><span>03 / AGENT READINESS</span></div>
     </section>
     <section id="loading-view" class="loading-view" aria-labelledby="loading-title" aria-busy="true" hidden>
@@ -55,7 +80,7 @@
       </div>
     </section>
     <div id="report-view" class="report-view" hidden>
-      <div class="report-nav"><button id="new-analysis" class="text-button">← New scan</button><a id="download-report" class="report-download" download>Download report ↗</a></div>
+      <div class="report-nav"><button id="new-analysis" class="text-button">← New scan</button></div>
       <section id="results" hidden>
         <div class="report-identity"><span class="report-site-icon" aria-hidden="true">◎</span><div><h2 id="report-domain" tabindex="-1"></h2><p id="report-time"></p></div><span class="report-version"><span class="mode-normal">MARKETING PLAYBOOK</span><span class="mode-agent">AGENT READINESS</span></span></div>
         <div id="marketing-report" class="mode-normal">
@@ -66,37 +91,34 @@
           <div id="mk-layers" class="report-layer-strip" aria-label="Marketing layer scores"></div>
           <div class="report-body">
             <section class="action-section" aria-labelledby="mk-actions-title"><div class="section-heading"><div><span class="section-index">01 / NEXT STEPS</span><h2 id="mk-actions-title">Where should you start?</h2></div><span id="mk-action-count" class="section-aside"></span></div><p class="section-description">Suggestions for playbook checks your site is missing.</p><div id="mk-action-list" class="action-list"></div></section>
-            <section aria-labelledby="mk-findings-title"><div class="section-heading"><div><span class="section-index">02 / PLAYBOOK CHECKS</span><h2 id="mk-findings-title">Marketing basics</h2></div><span class="section-aside">Open a check for details</span></div><div id="mk-findings"></div><div class="raw-links"><a id="growth-raw" download>Playbook raw JSON ↓</a></div></section>
+            <section aria-labelledby="mk-findings-title"><div class="section-heading"><div><span class="section-index">02 / PLAYBOOK CHECKS</span><h2 id="mk-findings-title">Marketing basics</h2></div><span class="section-aside">Open a check for details</span></div><div id="mk-findings"></div></section>
           </div>
         </div>
         <div id="agent-report" class="mode-agent">
+        <section class="action-section top-action-section" aria-labelledby="actions-title"><div class="section-heading"><div><span class="section-index">NEXT STEPS</span><h2 id="actions-title">Recommended improvements</h2></div><span id="action-count" class="section-aside"></span></div><p class="section-description">Practical changes based on this scan. Start with the ones that matter to your product.</p><div id="action-list" class="action-list"></div></section>
         <section class="report-hero" aria-label="Scan summary">
           <div class="report-score"><div class="eyebrow">PICKABLE PRELIMINARY SCORE</div><div class="score-number"><strong id="score-total">—</strong><span>/100</span></div><p id="score-coverage" class="score-coverage"></p></div>
           <div class="report-assessment"><span class="assessment-label">OVERVIEW</span><h3 id="report-headline"></h3><p id="report-summary"></p><div id="report-counts" class="report-counts"></div></div>
         </section>
         <div id="layers" class="report-layer-strip" aria-label="Layer scores"></div>
-        <div class="report-body">
-          <section class="action-section" aria-labelledby="actions-title"><div class="section-heading"><div><span class="section-index">01 / NEXT STEPS</span><h2 id="actions-title">Where should you start?</h2></div><span id="action-count" class="section-aside"></span></div><p class="section-description">Suggestions for checks reported as missing. Weigh them against how your site is used.</p><div id="action-list" class="action-list"></div></section>
-          <section aria-labelledby="findings-title"><div class="section-heading"><div><span class="section-index">02 / CHECKS</span><h2 id="findings-title">Layers of the agent experience</h2></div><span class="section-aside">Open a check for details</span></div><div id="category-findings"></div></section>
-          <details class="technical-details"><summary><span>03 / SOURCES & METHOD</span><span>Checks and original reports ↗</span></summary><div class="technical-body">
-    <section class="sources" aria-label="Scan sources">
-      <article class="source-card"><span class="source-icon ora-icon">o</span><div><h3>Ora <span>Hosted scanner</span></h3><p id="ora-detail">Discovery, content and integration checks</p></div><span id="ora-state" class="source-state">Ready</span></article>
-      <article class="source-card"><span class="source-icon oss-icon">☁</span><div><h3>Cloudflare <span>Fallback scanner</span></h3><p id="cloudflare-detail">isitagentready.com · 22 checks</p></div><span id="cloudflare-state" class="source-state">Ready</span></article>
-    </section>
-          <div class="method-note"><strong>How to read the score</strong> Layer score = passed / (passed + missing) × weight. Warnings, unclear and N/A checks are not scored. Unmeasured layers earn no points. Each check uses Ora's result; Cloudflare is used only when Ora has no definitive result. This is not independent verification or a real agent task test.</div>
-      <section class="comparison"><div class="table-head"><div><h2>Check table</h2><p>Open a row to inspect the raw findings from each source.</p></div><label for="filter" class="sr-only">Filter checks</label><select id="filter"><option value="all">All checks</option><option value="pass">Passed</option><option value="unknown">Unclear</option></select></div><div class="table-scroll"><table><thead><tr><th>Check</th><th>Ora</th><th>Cloudflare</th><th>Scored from</th><th>Why?</th></tr></thead><tbody id="checks"></tbody></table></div></section>
-      <details class="specific"><summary id="specific-title">Source-specific findings</summary><div id="specific-list"></div></details>
-      <details class="specific"><summary>Recommendations and original reports</summary><div id="recommendations"></div><div class="raw-links"><a id="ora-raw" download>Ora raw JSON ↓</a><a id="cloudflare-raw" download>Cloudflare raw JSON ↓</a></div><p class="form-note">Each source's original score, checks and recommendation order are kept in its raw report.</p></details>
-          </div></details>
+        <section class="report-body" aria-labelledby="checks-title">
+          <div class="section-heading"><div><span class="section-index">SCORE DETAILS</span><h2 id="checks-title">Checks behind this score</h2></div><span class="section-aside">Open a check to see what it means</span></div>
+          <div id="check-findings"></div>
+        </section>
         </div>
-        </div>
+        <section id="intelligence-panel" class="intelligence-panel" aria-labelledby="intelligence-title" hidden>
+          <div class="section-heading"><div><span class="section-index">PRODUCT INTELLIGENCE</span><h2 id="intelligence-title">What this product does</h2></div><span id="intelligence-status" class="section-aside"></span></div>
+          <p id="intelligence-summary" class="intelligence-summary"></p>
+          <div id="intelligence-details" class="intelligence-details"></div>
+          <div id="intelligence-sources" class="intelligence-sources"></div>
+          <button id="deep-analysis" class="text-button" type="button">Research deeper ↗</button>
+        </section>
       </section>
     </div>
     <div id="empty-state" hidden></div>
     <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
   </main>
-  <footer class="site-footer"><span>One address. A clearer picture.</span><span>pickable © 2026</span></footer>
+  <footer class="site-footer"><span>One address. A clearer picture.</span><nav aria-label="More about Pickable"><a href="/about">About</a><a href="/docs">Docs</a><a href="/api">API</a><a href="/pricing">Pricing</a><a href="/index.md">index.md</a><a href="/about.md">about.md</a><a href="/docs.md">docs.md</a><a href="/api.md">api.md</a><a href="/agent-scan.md">agent-scan.md</a><a href="/pricing.md">pricing.md</a></nav><span class="footer-brand"><img src="/pickable-rise.svg" width="22" height="22" alt="">pickable © 2026 </span></footer>
   <dialog id="history-dialog" aria-labelledby="history-title"><div class="dialog-head"><h2 id="history-title">Recent scans</h2><div><button id="refresh-history" aria-label="Refresh history">↻</button><button id="close-history" aria-label="Close history">✕</button></div></div><div id="history" class="history"></div></dialog>
-  <dialog id="evidence-dialog" aria-labelledby="evidence-title"><div class="dialog-head"><div><span class="eyebrow">EVIDENCE REPORTED BY SOURCE</span><h2 id="evidence-title"></h2></div><button id="close-dialog" aria-label="Close evidence dialog">✕</button></div><p id="evidence-reason"></p><div class="evidence-columns"><section><h3>Ora</h3><pre id="ora-evidence"></pre></section><section><h3>Cloudflare</h3><pre id="cloudflare-evidence"></pre></section></div></dialog>
 </body>
 </html>

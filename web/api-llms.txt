@@ -1,0 +1,32 @@
+# Pickable API for agents
+
+> Read peer-IP-scoped scan results or create an asynchronous public-target scan.
+
+- [Human API guide](https://solveny.dev/api)
+- [OpenAPI 3.1](https://solveny.dev/openapi.json)
+- [Authentication and request protection](https://solveny.dev/auth.md)
+- [MCP integration guide](https://solveny.dev/docs/agent-scan)
+- [MCP server card](https://solveny.dev/.well-known/mcp/server-card.json)
+- [Agent discovery details](https://solveny.dev/.well-known/agent.json)
+- [RFC 9727 API catalog](https://solveny.dev/.well-known/api-catalog)
+- [Agent skill](https://solveny.dev/skills/pickable-scan/SKILL.md)
+
+## REST scan creation
+
+POST /api/scans accepts exactly one string field: {"domain":"example.com"} for a bare public domain or HTTP(S) root URL, or {"url":"https://example.com/pricing"} for an exact public URL path. Do not send both fields. Credentials, IP literals, and private/reserved destinations are rejected. Authentication query parameters are rejected; other query parameters are preserved and fragments are dropped. Domain input also rejects paths and ports. Send Content-Type: application/json and X-CSRF-Token from GET /api/config, or the configured bearer key. Poll GET /api/scans/{job_id}.
+
+The response is 202 with job_id. Poll GET /api/scans/{job_id}; report may be partial while sources run. GET /api/scans/{job_id}/report returns 404 until available.
+
+## Scoped reads
+
+GET /api/scans, /api/scans/{job_id}, /api/scans/{job_id}/report, and /api/scans/{job_id}/preview use the caller direct peer-IP scope. GET /api/config and /api/health are unscoped. Scan history, statuses, reports, previews, and intelligence reads are scoped to the caller’s direct peer IP address. Forwarded-IP headers are not trusted; clients behind a reverse proxy may share the same scope. This is not account authentication or a confidentiality guarantee. Provider evidence is redacted and raw-source endpoints return 404.
+
+## Rate and errors
+
+Queue capacity: 20 waiting scans. Default limits: 5 accepted scans per peer address per hour; 30 globally per hour. Follow Retry-After after 429. 400 means invalid input/length, 403 host/origin or scan credential failure, 408 body timeout, 413 oversized body, 415 non-JSON body, 503 backend unavailable.
+
+## MCP
+
+Use JSON-RPC 2.0 POST with Accept: application/json, text/event-stream. Initialize with 2025-03-26 or 2025-06-18; use the negotiated version in MCP-Protocol-Version later. Response format is application/json; notifications/initialized returns 202 with an empty body. GET is 405; SSE is unsupported. An enabled scan-start call with a missing or invalid key returns 401. Authorized scan-start business errors use HTTP 200 tool results with isError and an error code.
+
+Default tools are describe_pickable, list_scans, and get_scan_report. The start_website_scan tool is optional and requires server opt-in plus bearer authorization. This is not an OAuth, A2A, or payment interface.

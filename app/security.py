@@ -7,7 +7,7 @@ import socket
 import ssl
 import time
 from dataclasses import dataclass
-from urllib.parse import urlsplit, urljoin
+from urllib.parse import urlsplit, urljoin, urlunsplit, parse_qsl
 
 
 def normalize_domain(value):
@@ -37,6 +37,27 @@ def normalize_domain(value):
                for label in host.split(".")) or host.split(".")[-1].isdigit():
         raise ValueError("Invalid domain format.")
     return host
+
+
+def normalize_site_url(value):
+    """Accept a public site URL including a path; return its normalized host and fetch URL."""
+    if not isinstance(value, str) or not value.strip() or len(value) > 2000:
+        raise ValueError("Enter a valid public website URL.")
+    value = value.strip()
+    if any(ord(c) < 33 for c in value) or "\\" in value:
+        raise ValueError("Website URL contains invalid characters.")
+    candidate = value if "://" in value else "https://" + value
+    parts, _ = validate_url(candidate)
+    sensitive_query_names = {"token", "accesstoken", "refreshtoken", "idtoken", "secret", "password", "passwd",
+                             "auth", "authorization", "bearer", "apikey", "accesskey", "clientsecret",
+                             "code", "session", "signature", "sig"}
+    for key, _ in parse_qsl(parts.query, keep_blank_values=True):
+        normalized_key = re.sub(r"[^a-z0-9]", "", key.lower())
+        if normalized_key in sensitive_query_names:
+            raise ValueError("Remove credentials or authentication parameters from the website URL.")
+    host = normalize_domain(parts.hostname)
+    target = urlunsplit((parts.scheme.lower(), host, parts.path or "/", parts.query, ""))
+    return host, target
 
 
 def public_addresses(host, port):
@@ -107,7 +128,8 @@ def request(url, method="GET", headers=None, body=None, timeout=12, follow=True,
                 if p.scheme == "https" and new.scheme != "https":
                     raise ValueError("Redirect from HTTPS to HTTP blocked.")
                 if (new.scheme, new.netloc) != (p.scheme, p.netloc):
-                    headers = {k: v for k, v in headers.items() if k.lower() not in ("authorization", "cookie")}
+                    headers = {k: v for k, v in headers.items()
+                               if k.lower() not in ("authorization", "cookie", "proxy-authorization", "host")}
                 if response.status == 303 or (response.status in (301, 302) and method == "POST"):
                     method, body = "GET", None
                     headers = {k: v for k, v in headers.items() if k.lower() != "content-type"}

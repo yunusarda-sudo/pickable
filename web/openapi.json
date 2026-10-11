@@ -1,0 +1,2122 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://spec.openapis.org/oas/3.1/dialect/base",
+  "info": {
+    "title": "Pickable Public Scan API",
+    "version": "1.0.0",
+    "summary": "Request public-target scans and read peer-IP-scoped, redacted results.",
+    "description": "Pickable analyzes public websites asynchronously. Reads are scoped to the caller direct peer IP address, not an account or credential. Forwarded-IP headers are not trusted and reverse-proxy clients may share this scope. Bearer credentials do not bypass it. Provider evidence is redacted; raw-source routes return 404. POST /api/scans requires the process CSRF token from GET /api/config or an operator-issued bearer key. Local intelligence routes are retained; deep research POST requires CSRF only. MCP uses stateless JSON-RPC over Streamable HTTP. Scores summarize observations and do not prove successful agent journeys or growth."
+  },
+  "servers": [
+    {
+      "url": "https://solveny.dev",
+      "description": "Public Pickable demo. The server substitutes PICKABLE_PUBLIC_URL when serving this document."
+    }
+  ],
+  "externalDocs": {
+    "description": "Pickable API and agent integration guide",
+    "url": "https://solveny.dev/api"
+  },
+  "tags": [
+    {
+      "name": "Service",
+      "description": "Public configuration and service health."
+    },
+    {
+      "name": "Scans",
+      "description": "Asynchronous public-target scans with direct peer-IP-scoped reads."
+    },
+    {
+      "name": "MCP",
+      "description": "JSON-RPC 2.0 over stateless Streamable HTTP."
+    }
+  ],
+  "paths": {
+    "/api/config": {
+      "get": {
+        "tags": [
+          "Service"
+        ],
+        "operationId": "getScanConfiguration",
+        "summary": "Get scan mode and CSRF token",
+        "description": "Returns the current demo/live mode and a process-scoped anti-CSRF token. The token is not user identity; scan reads use the direct peer-IP scope.",
+        "responses": {
+          "200": {
+            "description": "Current service mode and scan-creation CSRF token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanConfig"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/HostOrOriginRejected"
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "tags": [
+          "Service"
+        ],
+        "operationId": "getServiceHealth",
+        "summary": "Read service health",
+        "description": "Returns a lightweight indication that the HTTP service is responding and identifies its current mode. It is not a guarantee that external scan providers are available.",
+        "responses": {
+          "200": {
+            "description": "Service health indication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/HostOrOriginRejected"
+          }
+        }
+      }
+    },
+    "/api/scans": {
+      "get": {
+        "tags": [
+          "Scans"
+        ],
+        "operationId": "listPublicScans",
+        "summary": "List scan history for the caller direct peer IP",
+        "description": "Returns stored scan metadata in reverse creation order. Reads are scoped to the caller direct peer IP address, not an account or credential. Forwarded-IP headers are not trusted and reverse-proxy clients may share this scope. Bearer credentials do not bypass it. Provider evidence is redacted; raw-source routes return 404.",
+        "responses": {
+          "200": {
+            "description": "Public scan summaries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanList"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/HostOrOriginRejected"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Scans"
+        ],
+        "operationId": "createPublicDomainScan",
+        "summary": "Create an asynchronous public website scan",
+        "description": "Accepts exactly one string property: domain for a bare public domain or HTTP(S) root URL, or url for an exact public HTTP(S) URL path. Do not combine them. Unicode domains use IDNA; credentials, authentication query parameters, IP literals, localhost and private/reserved destinations are rejected. Other query parameters are preserved and fragments are dropped. Domain input also rejects paths and ports. Send X-CSRF-Token from GET /api/config or the operator-issued bearer key. Successful admission returns job_id; 429 includes Retry-After.",
+        "security": [
+          {
+            "CsrfToken": []
+          },
+          {
+            "AgentBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "A UTF-8 JSON object with exactly one property. Maximum encoded body size is 2,048 bytes.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanCreateInput"
+              },
+              "examples": {
+                "domain": {
+                  "value": {
+                    "domain": "example.com"
+                  }
+                },
+                "exactUrl": {
+                  "value": {
+                    "url": "https://example.com/pricing"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Scan accepted. Use the returned job_id to poll scan status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanAccepted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/malformed length, invalid UTF-8/JSON, invalid target, or invalid body shape (including both domain and url).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Host or Origin is disallowed, or neither a valid CSRF token nor a configured valid bearer key was supplied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          },
+          "408": {
+            "description": "The request body did not arrive before the read timeout.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds 2,048 bytes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type is not application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The bounded queue or per-peer/global scan rate limit is full. Respect Retry-After before retrying.",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The scan backend is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/scans/{job_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/JobId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "Scans"
+        ],
+        "operationId": "getScanStatus",
+        "summary": "Read scan status and current report",
+        "description": "Returns the current job state and source states. A normalized report may be null before any source report is available and may be partial while sources remain pending. Reads are scoped to the caller direct peer IP address, not an account or credential. Forwarded-IP headers are not trusted and reverse-proxy clients may share this scope. Bearer credentials do not bypass it. Provider evidence is redacted; raw-source routes return 404.",
+        "responses": {
+          "200": {
+            "description": "Scan status and optional partial or complete report.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanJob"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/HostOrOriginRejected"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/scans/{job_id}/report": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/JobId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "Scans"
+        ],
+        "operationId": "getNormalizedScanReport",
+        "summary": "Read the normalized report",
+        "description": "Returns a redacted normalized report when available. Out-of-scope/unknown scans and unavailable reports return 404. Coverage can remain partial while running. Reads are scoped to the caller direct peer IP address, not an account or credential. Forwarded-IP headers are not trusted and reverse-proxy clients may share this scope. Bearer credentials do not bypass it. Provider evidence is redacted; raw-source routes return 404.",
+        "responses": {
+          "200": {
+            "description": "Normalized report JSON.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnifiedReport"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/HostOrOriginRejected"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/scans/{job_id}/preview": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/JobId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "Scans"
+        ],
+        "operationId": "getScanPreviewMetadata",
+        "summary": "Read website preview metadata",
+        "description": "Returns preview fields collected for the scanned domain, or a null preview when none is available. Reads are scoped to the caller direct peer IP address, not an account or credential. Forwarded-IP headers are not trusted and reverse-proxy clients may share this scope. Bearer credentials do not bypass it. Provider evidence is redacted; raw-source routes return 404.",
+        "responses": {
+          "200": {
+            "description": "Preview metadata wrapper.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/HostOrOriginRejected"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/mcp": {
+      "get": {
+        "tags": [
+          "MCP"
+        ],
+        "operationId": "rejectMcpEventStream",
+        "summary": "MCP GET transport is unsupported",
+        "description": "Pickable is stateless and does not open server-sent event streams. GET /mcp returns HTTP 405 with Allow: POST. Use POST for JSON-RPC messages.",
+        "responses": {
+          "403": {
+            "$ref": "#/components/responses/HostOrOriginRejected"
+          },
+          "405": {
+            "description": "SSE/event-stream transport is unsupported.",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string",
+                  "const": "POST"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "MCP"
+        ],
+        "operationId": "postMcpJsonRpcMessage",
+        "summary": "Send one MCP JSON-RPC message",
+        "description": "Implements stateless MCP Streamable HTTP using one JSON-RPC 2.0 message per POST. The request Accept header must include both application/json and text/event-stream, while Pickable responds with application/json only. Initialize with 2025-03-26 or 2025-06-18; the initialization response selects the negotiated version. Send MCP-Protocol-Version with that value on subsequent POST requests. A notification such as notifications/initialized receives HTTP 202 with an empty response body. The default tools are describe_pickable, list_scans, and get_scan_report. start_website_scan is advertised only when PICKABLE_MCP_SCAN_ENABLED=1 and PICKABLE_AGENT_API_KEY are both configured; its call requires the configured bearer key. MCP list_scans and get_scan_report use the same direct peer-IP scope; bearer keys do not bypass it. MCP start_website_scan remains domain-only.",
+        "parameters": [
+          {
+            "name": "MCP-Protocol-Version",
+            "in": "header",
+            "required": false,
+            "description": "Omit on initialize. On later requests, send the version selected in the initialize response. If omitted on a later request, Pickable treats the caller as a 2025-03-26 client.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "2025-03-26",
+                "2025-06-18"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "One JSON-RPC 2.0 request or notification. Maximum body size is 32 KiB. Initialize requires protocolVersion, capabilities, and clientInfo. Tool calls use tools/call with name and arguments.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/McpRequestEnvelope"
+                  },
+                  {
+                    "$ref": "#/components/schemas/McpNotificationEnvelope"
+                  }
+                ]
+              },
+              "examples": {
+                "initialize": {
+                  "value": {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                      "protocolVersion": "2025-06-18",
+                      "capabilities": {},
+                      "clientInfo": {
+                        "name": "example-agent",
+                        "version": "1.0.0"
+                      }
+                    }
+                  }
+                },
+                "listTools": {
+                  "value": {
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "tools/list"
+                  }
+                },
+                "callReadTool": {
+                  "value": {
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "method": "tools/call",
+                    "params": {
+                      "name": "list_scans",
+                      "arguments": {}
+                    }
+                  }
+                },
+                "initializedNotification": {
+                  "value": {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/initialized"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A JSON-RPC result or protocol error. Response includes MCP-Protocol-Version with the negotiated version.",
+            "headers": {
+              "MCP-Protocol-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "2025-03-26",
+                    "2025-06-18"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpJsonRpcResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Notification accepted. The response has an empty body and Content-Length: 0."
+          },
+          "403": {
+            "$ref": "#/components/responses/HostOrOriginRejected"
+          },
+          "400": {
+            "description": "Malformed message, unsupported protocol-version header, or invalid JSON request envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpJsonRpcResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The optional scan-start tool was enabled but the configured bearer key was absent or invalid.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string",
+                  "example": "Bearer realm=\"pickable\""
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpJsonRpcResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "SSE is unsupported. Allow contains POST.",
+            "headers": {
+              "Allow": {
+                "schema": {
+                  "type": "string",
+                  "const": "POST"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          },
+          "406": {
+            "description": "Accept did not include both application/json and text/event-stream.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpJsonRpcResponse"
+                }
+              }
+            }
+          },
+          "408": {
+            "description": "The JSON request body timed out while being read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpJsonRpcResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The JSON request body exceeds 32 KiB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpJsonRpcResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type is not application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpJsonRpcResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/scans/{job_id}/intelligence": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/JobId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "Scans"
+        ],
+        "operationId": "getShortIntelligence",
+        "summary": "Read local short product analysis",
+        "description": "Reads are scoped to the caller direct peer IP address, not an account or credential. Forwarded-IP headers are not trusted and reverse-proxy clients may share this scope. Bearer credentials do not bypass it. Provider evidence is redacted; raw-source routes return 404. Returns null intelligence when no analysis is available. This feature requires a configured local or hosted analysis provider and is not an MCP tool.",
+        "responses": {
+          "200": {
+            "description": "Analysis wrapper.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "intelligence"
+                  ],
+                  "properties": {
+                    "intelligence": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/IntelligenceJob"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/HostOrOriginRejected"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Scans"
+        ],
+        "operationId": "startDeepIntelligence",
+        "summary": "Start local deep product research",
+        "description": "Requires X-CSRF-Token from GET /api/config. Bearer credentials cannot replace this token. The scan must be within the caller direct peer-IP scope. Local capability does not imply hosted availability.",
+        "security": [
+          {
+            "CsrfToken": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Analysis queued.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "intelligence_job_id"
+                  ],
+                  "properties": {
+                    "intelligence_job_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/HostOrOriginRejected"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Analysis unavailable or scan not ready.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Deep research limit or queue reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/scans/{job_id}/intelligence/deep": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/JobId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "Scans"
+        ],
+        "operationId": "getDeepIntelligence",
+        "summary": "Read local deep product analysis",
+        "description": "Reads are scoped to the caller direct peer IP address, not an account or credential. Forwarded-IP headers are not trusted and reverse-proxy clients may share this scope. Bearer credentials do not bypass it. Provider evidence is redacted; raw-source routes return 404. Returns null intelligence when no analysis is available. This feature requires a configured local or hosted analysis provider and is not an MCP tool.",
+        "responses": {
+          "200": {
+            "description": "Analysis wrapper.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "intelligence"
+                  ],
+                  "properties": {
+                    "intelligence": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/IntelligenceJob"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/HostOrOriginRejected"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "CsrfToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-CSRF-Token",
+        "description": "Process-scoped anti-CSRF token from GET /api/config. Not user identity. Required for intelligence POST; bearer cannot replace it."
+      },
+      "AgentBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Optional operator-issued shared key from PICKABLE_AGENT_API_KEY. Valid only for scan creation. The key must be at least 32 ASCII characters with no whitespace. This is not OAuth or user identity. Does not bypass direct peer-IP read scope and cannot authorize intelligence POST."
+      }
+    },
+    "parameters": {
+      "JobId": {
+        "name": "job_id",
+        "in": "path",
+        "required": true,
+        "description": "Identifier returned by scan creation or the caller peer-IP-scoped scan list.",
+        "schema": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]{8,128}$"
+        }
+      }
+    },
+    "headers": {
+      "RetryAfter": {
+        "description": "Minimum number of seconds to wait before retrying scan creation.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "responses": {
+      "HostOrOriginRejected": {
+        "description": "Host or supplied Origin does not match the service's allowed host/origin configuration.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HttpError"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "The scan does not exist, the requested source report is unavailable, or no normalized report exists yet.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HttpError"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "HttpError": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Human-readable error."
+          },
+          "code": {
+            "type": "string",
+            "description": "Stable error category when supplied."
+          },
+          "documentation_url": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "additionalProperties": true
+      },
+      "RateLimitError": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/HttpError"
+          },
+          {
+            "type": "object",
+            "required": [
+              "retry_after"
+            ],
+            "properties": {
+              "retry_after": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        ]
+      },
+      "ScanConfig": {
+        "type": "object",
+        "required": [
+          "csrf_token",
+          "mode"
+        ],
+        "properties": {
+          "csrf_token": {
+            "type": "string",
+            "description": "Process-scoped anti-CSRF token for scan creation."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "demo",
+              "live"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "Health": {
+        "type": "object",
+        "required": [
+          "ok",
+          "product",
+          "mode"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "product": {
+            "type": "string",
+            "const": "pickable"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "demo",
+              "live"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "ScanCreateInput": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "Public domain input. Accepts a bare domain such as example.com or an http:// or https:// root URL such as https://example.com/. Surrounding whitespace is trimmed. Unicode domains are accepted and normalized with IDNA. Ports, credentials, non-root paths, IP literals, localhost, and private or reserved destinations are rejected.",
+            "examples": [
+              "example.com"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "Exact public HTTP(S) URL, including an optional path. A missing scheme defaults to HTTPS. Credentials, authentication query parameters, IP literals and private/reserved destinations are rejected. Other query parameters are preserved and fragments are dropped.",
+            "examples": [
+              "https://example.com/pricing"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "required": [
+              "domain"
+            ]
+          },
+          {
+            "required": [
+              "url"
+            ]
+          }
+        ]
+      },
+      "ScanAccepted": {
+        "type": "object",
+        "required": [
+          "job_id"
+        ],
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128
+          }
+        }
+      },
+      "ScanSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "domain",
+          "status",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string",
+            "format": "hostname"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ScanStatus"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScanList": {
+        "type": "object",
+        "required": [
+          "scans"
+        ],
+        "properties": {
+          "scans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScanSummary"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScanStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "completed",
+          "failed",
+          "interrupted"
+        ]
+      },
+      "SourceStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "ora",
+              "cloudflare",
+              "growth"
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScanJob": {
+        "type": "object",
+        "required": [
+          "id",
+          "domain",
+          "created_at",
+          "status",
+          "sources",
+          "report"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string",
+            "format": "hostname"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ScanStatus"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceStatus"
+            }
+          },
+          "report": {
+            "description": "Null before any source report is available; may be partial while the scan is pending or running.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UnifiedReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "intelligence": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/IntelligenceJob"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "NormalizedCheck": {
+        "type": "object",
+        "required": [
+          "check_id",
+          "title",
+          "category",
+          "measurement_definition",
+          "scoring_status",
+          "scoring_source",
+          "combined_status"
+        ],
+        "properties": {
+          "check_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "combined_status": {
+            "type": "string",
+            "enum": [
+              "PASS",
+              "FAIL",
+              "WARNING",
+              "NOT_APPLICABLE",
+              "UNKNOWN"
+            ]
+          },
+          "scoring_status": {
+            "type": "string",
+            "enum": [
+              "PASS",
+              "FAIL",
+              "WARNING",
+              "NOT_APPLICABLE",
+              "UNKNOWN",
+              "PENDING"
+            ]
+          },
+          "scoring_source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "ora",
+              "cloudflare",
+              "growth",
+              null
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScoreLayer": {
+        "type": "object",
+        "required": [
+          "label",
+          "points",
+          "max_points",
+          "measured",
+          "defined",
+          "coverage"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "points": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "max_points": {
+            "type": "number"
+          },
+          "measured": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "defined": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "coverage": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false
+      },
+      "Score": {
+        "type": "object",
+        "required": [
+          "total",
+          "grade",
+          "coverage",
+          "breakdown",
+          "label",
+          "final"
+        ],
+        "properties": {
+          "total": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "grade": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "F",
+              null
+            ]
+          },
+          "coverage": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "breakdown": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ScoreLayer"
+            }
+          },
+          "label": {
+            "type": "string"
+          },
+          "final": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MarketingReport": {
+        "type": "object",
+        "required": [
+          "checks",
+          "score",
+          "source"
+        ],
+        "properties": {
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketingCheck"
+            }
+          },
+          "score": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Score"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "type": "object",
+            "required": [
+              "id",
+              "status",
+              "observed_at"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "const": "growth"
+              },
+              "status": {
+                "type": "string"
+              },
+              "observed_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "UnifiedReport": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "domain",
+          "scanned_at",
+          "checks",
+          "score",
+          "recommendations",
+          "marketing"
+        ],
+        "properties": {
+          "schema_version": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string",
+            "format": "hostname"
+          },
+          "scanned_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NormalizedCheck"
+            }
+          },
+          "score": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Score"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recommendations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "marketing": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MarketingReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "description": "Customer-facing normalized report; provider evidence, raw observations, provider errors, source-specific payloads and mapping metadata are omitted."
+      },
+      "Preview": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          }
+        },
+        "additionalProperties": true
+      },
+      "PreviewResponse": {
+        "type": "object",
+        "required": [
+          "preview"
+        ],
+        "properties": {
+          "preview": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Preview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "McpRequestEnvelope": {
+        "type": "object",
+        "required": [
+          "jsonrpc",
+          "id",
+          "method"
+        ],
+        "properties": {
+          "jsonrpc": {
+            "type": "string",
+            "const": "2.0"
+          },
+          "id": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "initialize",
+              "ping",
+              "tools/list",
+              "tools/call"
+            ]
+          },
+          "params": {
+            "description": "Method parameters. initialize requires protocolVersion, capabilities, and clientInfo; tools/call requires name.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/McpInitializeParams"
+              },
+              {
+                "$ref": "#/components/schemas/McpPingParams"
+              },
+              {
+                "$ref": "#/components/schemas/McpToolsListParams"
+              },
+              {
+                "$ref": "#/components/schemas/McpToolsCallParams"
+              }
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "McpNotificationEnvelope": {
+        "type": "object",
+        "required": [
+          "jsonrpc",
+          "method"
+        ],
+        "properties": {
+          "jsonrpc": {
+            "type": "string",
+            "const": "2.0"
+          },
+          "method": {
+            "type": "string",
+            "const": "notifications/initialized"
+          },
+          "params": {
+            "type": "object"
+          }
+        },
+        "not": {
+          "required": [
+            "id"
+          ]
+        },
+        "additionalProperties": true
+      },
+      "McpJsonRpcResponse": {
+        "type": "object",
+        "required": [
+          "jsonrpc",
+          "id"
+        ],
+        "properties": {
+          "jsonrpc": {
+            "type": "string",
+            "const": "2.0"
+          },
+          "id": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "$ref": "#/components/schemas/McpResult"
+          },
+          "error": {
+            "$ref": "#/components/schemas/McpJsonRpcError"
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "result"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "required": [
+              "error"
+            ],
+            "not": {
+              "required": [
+                "result"
+              ]
+            }
+          }
+        ],
+        "additionalProperties": false
+      },
+      "McpJsonRpcError": {
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {}
+        },
+        "additionalProperties": true
+      },
+      "McpInitializeParams": {
+        "type": "object",
+        "required": [
+          "protocolVersion",
+          "capabilities",
+          "clientInfo"
+        ],
+        "properties": {
+          "protocolVersion": {
+            "type": "string",
+            "description": "Request 2025-03-26 or 2025-06-18. Unsupported values are negotiated to a supported version."
+          },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "clientInfo": {
+            "type": "object",
+            "required": [
+              "name",
+              "version"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "McpPingParams": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "McpToolsListParams": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string"
+          },
+          "_meta": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "McpToolArguments": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Empty arguments for describe_pickable and list_scans.",
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "job_id"
+            ],
+            "properties": {
+              "job_id": {
+                "type": "string",
+                "minLength": 8,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9_-]{8,128}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "domain"
+            ],
+            "properties": {
+              "domain": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 253,
+                "description": "Public domain or http(s) root URL; private and reserved destinations are rejected."
+              }
+            },
+            "additionalProperties": false,
+            "description": "Arguments for start_website_scan only when the operator has enabled that tool."
+          }
+        ]
+      },
+      "McpToolsCallParams": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "describe_pickable",
+              "list_scans",
+              "get_scan_report",
+              "start_website_scan"
+            ],
+            "description": "start_website_scan is advertised only when enabled by the server operator."
+          },
+          "arguments": {
+            "$ref": "#/components/schemas/McpToolArguments"
+          },
+          "_meta": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "McpToolDefinition": {
+        "type": "object",
+        "required": [
+          "name",
+          "title",
+          "description",
+          "inputSchema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "inputSchema": {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "object"
+              }
+            },
+            "additionalProperties": true
+          },
+          "annotations": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "McpInitializeResult": {
+        "type": "object",
+        "required": [
+          "protocolVersion",
+          "capabilities",
+          "serverInfo",
+          "instructions"
+        ],
+        "properties": {
+          "protocolVersion": {
+            "type": "string",
+            "enum": [
+              "2025-03-26",
+              "2025-06-18"
+            ]
+          },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "serverInfo": {
+            "type": "object",
+            "required": [
+              "name",
+              "version"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          "instructions": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "McpPingResult": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "McpToolsListResult": {
+        "type": "object",
+        "required": [
+          "tools"
+        ],
+        "properties": {
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpToolDefinition"
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "McpToolResult": {
+        "type": "object",
+        "required": [
+          "content",
+          "isError"
+        ],
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "type",
+                "text"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "text"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "isError": {
+            "type": "boolean",
+            "description": "True for tool execution failures, including invalid domain and queue/rate-limit errors returned over HTTP 200."
+          },
+          "structuredContent": {
+            "description": "Structured content is present for successful calls using protocol version 2025-06-18. It is omitted for tool errors.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/McpDescribeResult"
+              },
+              {
+                "$ref": "#/components/schemas/McpListScansResult"
+              },
+              {
+                "$ref": "#/components/schemas/McpScanReportResult"
+              },
+              {
+                "$ref": "#/components/schemas/McpScanStartedResult"
+              }
+            ]
+          },
+          "_meta": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "McpResult": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/McpInitializeResult"
+          },
+          {
+            "$ref": "#/components/schemas/McpPingResult"
+          },
+          {
+            "$ref": "#/components/schemas/McpToolsListResult"
+          },
+          {
+            "$ref": "#/components/schemas/McpToolResult"
+          }
+        ]
+      },
+      "MarketingCheck": {
+        "type": "object",
+        "required": [
+          "check_id",
+          "title",
+          "category",
+          "measurement_definition",
+          "scoring_status",
+          "scoring_source",
+          "message",
+          "details"
+        ],
+        "properties": {
+          "check_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "measurement_definition": {
+            "type": "string"
+          },
+          "scoring_status": {
+            "type": "string",
+            "enum": [
+              "PASS",
+              "FAIL",
+              "WARNING",
+              "NOT_APPLICABLE",
+              "UNKNOWN",
+              "PENDING"
+            ]
+          },
+          "scoring_source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "growth",
+              null
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "details": {
+            "description": "Only public social profile links are retained. Provider evidence is omitted.",
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "profiles": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "McpDescribeResult": {
+        "type": "object",
+        "required": [
+          "name",
+          "website",
+          "description",
+          "documentation",
+          "agent_guide",
+          "openapi",
+          "mcp_endpoint",
+          "methodology",
+          "scan_enabled",
+          "available_tools",
+          "supported_protocol_versions"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "Pickable"
+          },
+          "website": {
+            "type": "string",
+            "format": "uri"
+          },
+          "description": {
+            "type": "string"
+          },
+          "documentation": {
+            "type": "string",
+            "format": "uri"
+          },
+          "agent_guide": {
+            "type": "string",
+            "format": "uri"
+          },
+          "openapi": {
+            "type": "string",
+            "format": "uri"
+          },
+          "mcp_endpoint": {
+            "type": "string",
+            "format": "uri"
+          },
+          "methodology": {
+            "type": "string"
+          },
+          "scan_enabled": {
+            "type": "boolean"
+          },
+          "available_tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "supported_protocol_versions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "2025-03-26",
+                "2025-06-18"
+              ]
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "McpListScansResult": {
+        "type": "object",
+        "required": [
+          "scans"
+        ],
+        "properties": {
+          "scans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScanSummary"
+            }
+          },
+          "truncation": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "McpScanReportResult": {
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "domain",
+          "created_at",
+          "sources",
+          "report",
+          "scan_url",
+          "report_url"
+        ],
+        "properties": {
+          "job_id": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ScanStatus"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceStatus"
+            }
+          },
+          "report": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UnifiedReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scan_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "report_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "truncation": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "McpScanStartedResult": {
+        "type": "object",
+        "required": [
+          "job_id",
+          "domain",
+          "status",
+          "scan_url",
+          "report_url",
+          "poll_with"
+        ],
+        "properties": {
+          "job_id": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ScanStatus"
+          },
+          "scan_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "report_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "poll_with": {
+            "type": "string",
+            "const": "get_scan_report"
+          },
+          "truncation": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "IntelligenceJob": {
+        "type": "object",
+        "description": "Local product analysis with allowlisted report fields; provider payloads and fetched text are omitted.",
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "depth": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "report": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "analysis_stage": {},
+              "product_summary": {},
+              "target_customers": {},
+              "problem": {},
+              "value_proposition": {},
+              "competitive_landscape": {},
+              "workflows": {},
+              "evidence_refs": {},
+              "unknowns": {},
+              "sources": {},
+              "web_sources": {},
+              "research_note": {}
+            },
+            "additionalProperties": false
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

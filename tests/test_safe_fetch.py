@@ -12,6 +12,18 @@ from app.safe_fetch import (
 
 
 class TestSafeFetch(unittest.TestCase):
+    def test_blocks_carrier_shared_address_space(self):
+        with patch("socket.getaddrinfo", return_value=[
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("100.64.0.1", 443))
+        ]):
+            with self.assertRaises(SSRFBlocked):
+                safe_fetch("https://shared.test/")
+
+    def test_blocks_embedded_credentials_and_nonstandard_ports(self):
+        for url in ("https://user:secret@example.com/", "https://example.com:8443/"):
+            with self.subTest(url=url), self.assertRaises(SSRFBlocked):
+                safe_fetch(url)
+
     def test_blocks_private_ipv4(self):
         """10.0.0.1, 192.168.1.1, 172.16.0.1, 127.0.0.1 engellenmeli"""
         private_ips = ["10.0.0.1", "192.168.1.1", "172.16.0.1", "127.0.0.1"]

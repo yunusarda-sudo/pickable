@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schemas.agentskills.io/discovery/0.2.0/schema.json",
+  "skills": [
+    {
+      "name": "pickable-scan",
+      "type": "skill-md",
+      "description": "Request and interpret Pickable website-readiness scans for public websites through REST or MCP.",
+      "url": "https://solveny.dev/skills/pickable-scan/SKILL.md",
+      "digest": "sha256:a4ec62a75959850c105cc4c81b800499f8f937b39527aa98e830396296643248"
+    }
+  ]
+}

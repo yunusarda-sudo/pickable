@@ -64,7 +64,7 @@ def is_ip_safe(ip_str: str) -> bool:
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
         ip = ip.ipv4_mapped
 
-    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+    if not ip.is_global or ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
         return False
 
     # Explicit cloud metadata check
@@ -133,10 +133,14 @@ def safe_fetch(
         hostname = parsed.hostname
         if not hostname:
             raise SSRFBlocked(f"Invalid URL without hostname: {current_url}")
+        if parsed.username is not None or parsed.password is not None:
+            raise SSRFBlocked("URLs with embedded credentials are blocked.")
 
         port = parsed.port
         if port is None:
             port = 443 if parsed.scheme.lower() == "https" else 80
+        if port != (443 if parsed.scheme.lower() == "https" else 80):
+            raise SSRFBlocked("Non-standard destination ports are blocked.")
 
         # 2 & 3. DNS resolution & IP safety check
         verified_ips = resolve_and_verify(hostname, port)
@@ -193,7 +197,22 @@ def safe_fetch(
 
                     redirect_chain.append(current_url)
                     # Resolve relative redirect URLs against current URL
-                    current_url = urllib.parse.urljoin(current_url, location)
+                    next_url = urllib.parse.urljoin(current_url, location)
+                    next_parts = urllib.parse.urlsplit(next_url)
+                    if parsed.scheme.lower() == "https" and next_parts.scheme.lower() != "https":
+                        conn.close()
+                        raise SSRFBlocked("HTTPS to HTTP redirects are blocked.")
+                    if (next_parts.scheme, next_parts.netloc) != (parsed.scheme, parsed.netloc):
+                        # Do not forward caller-defined credentials (for example X-API-Key)
+                        # to a different authority. Host is rebuilt from the redirect target.
+                        req_headers = {key: value for key, value in req_headers.items()
+                                       if key.lower() in ("user-agent", "accept", "accept-encoding")}
+                        headers = req_headers
+                    if resp.status == 303 or (resp.status in (301, 302) and method.upper() == "POST"):
+                        method, body = "GET", None
+                        headers = {key: value for key, value in (headers or {}).items()
+                                   if key.lower() not in ("content-type", "content-length", "transfer-encoding")}
+                    current_url = next_url
                     conn.close()
                     continue
 

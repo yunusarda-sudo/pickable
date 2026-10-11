@@ -71,6 +71,24 @@ class TestStorage(unittest.TestCase):
         self.assertEqual(storage2.get_job(job3)["status"], "completed")
         storage2.close()
 
+    def test_interrupted_intelligence_job_can_be_requeued(self):
+        scan_id = self.storage.create_job("example.com")
+        job_id, created = self.storage.create_intelligence_job(scan_id, "short", "test-model")
+        self.assertTrue(created)
+        self.storage.update_intelligence_job(job_id, "running")
+        self.storage.close()
+
+        storage2 = Storage(self.db_path)
+        self.assertEqual(storage2.get_intelligence_job(scan_id, "short")["status"], "interrupted")
+        resumed_id, queued = storage2.create_intelligence_job(scan_id, "short", "test-model")
+        self.assertEqual(resumed_id, job_id)
+        self.assertTrue(queued)
+        self.assertEqual(storage2.get_intelligence_job(scan_id, "short")["status"], "queued")
+        same_id, queued_again = storage2.create_intelligence_job(scan_id, "short", "test-model")
+        self.assertEqual(same_id, job_id)
+        self.assertFalse(queued_again)
+        storage2.close()
+
     def test_source_failure_does_not_lose_other_source(self):
         """Bir kaynagin basarisiz olmasi diger kaynagin basarili sonucunu kaybettirmemeli"""
         job_id = self.storage.create_job("partial.com")

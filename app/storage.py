@@ -5,14 +5,17 @@ SQLite Storage implementation for jobs, source runs, and checks.
 from __future__ import annotations
 
 import datetime
+import json
 import os
 import sqlite3
+import threading
 import uuid
 from typing import Any, Dict, List, Optional
 
 
 class Storage:
     def __init__(self, db_path: str = "./data/scan.db", recover_on_startup: bool = True):
+        self._lock = threading.RLock()
         self.db_path = db_path
         os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
@@ -28,6 +31,8 @@ class Storage:
                 CREATE TABLE IF NOT EXISTS jobs (
                     id TEXT PRIMARY KEY,
                     domain TEXT NOT NULL,
+                    target_url TEXT,
+                    owner_ip TEXT,
                     status TEXT NOT NULL,
                     started_at TEXT NOT NULL,
                     finished_at TEXT,
@@ -70,6 +75,30 @@ class Storage:
             self.conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_checks_canonical ON checks(canonical_check_id);"
             )
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS intelligence_jobs (
+                    id TEXT PRIMARY KEY,
+                    scan_id TEXT NOT NULL REFERENCES jobs(id),
+                    depth TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    started_at TEXT,
+                    finished_at TEXT,
+                    model TEXT,
+                    report TEXT,
+                    error TEXT,
+                    UNIQUE(scan_id, depth)
+                );
+            """)
+            columns = {row["name"] for row in self.conn.execute("PRAGMA table_info(jobs)")}
+            if "target_url" not in columns:
+                self.conn.execute("ALTER TABLE jobs ADD COLUMN target_url TEXT")
+            if "owner_ip" not in columns:
+                self.conn.execute("ALTER TABLE jobs ADD COLUMN owner_ip TEXT")
+            intel_columns = {row["name"] for row in self.conn.execute("PRAGMA table_info(intelligence_jobs)")}
+            for name in ("input_tokens", "output_tokens", "total_tokens", "finish_reason"):
+                if name not in intel_columns:
+                    self.conn.execute(f"ALTER TABLE intelligence_jobs ADD COLUMN {name} TEXT" if name == "finish_reason" else f"ALTER TABLE intelligence_jobs ADD COLUMN {name} INTEGER")
 
     def _mark_interrupted_on_startup(self) -> None:
         """
@@ -79,14 +108,65 @@ class Storage:
             self.conn.execute(
                 "UPDATE jobs SET status='interrupted' WHERE status IN ('pending', 'running');"
             )
+            self.conn.execute("UPDATE intelligence_jobs SET status='interrupted', finished_at=? WHERE status IN ('queued', 'running');",
+                              (datetime.datetime.now(datetime.timezone.utc).isoformat(),))
 
-    def create_job(self, domain: str) -> str:
+    def create_intelligence_job(self, scan_id: str, depth: str, model: str):
+        now, job_id = datetime.datetime.now(datetime.timezone.utc).isoformat(), str(uuid.uuid4())
+        with self._lock, self.conn:
+            cursor = self.conn.execute("""
+                INSERT INTO intelligence_jobs (id, scan_id, depth, status, created_at, model)
+                VALUES (?, ?, ?, 'queued', ?, ?)
+                ON CONFLICT(scan_id, depth) DO UPDATE SET
+                    status='queued', created_at=excluded.created_at, started_at=NULL,
+                    finished_at=NULL, model=excluded.model, report=NULL, error=NULL,
+                    input_tokens=NULL, output_tokens=NULL, total_tokens=NULL, finish_reason=NULL
+                WHERE intelligence_jobs.status IN ('interrupted', 'failed', 'partial', 'unavailable')
+            """, (job_id, scan_id, depth, now, model))
+            queued = cursor.rowcount == 1
+            row = self.conn.execute("SELECT id FROM intelligence_jobs WHERE scan_id=? AND depth=?", (scan_id, depth)).fetchone()
+            job_id = row["id"]
+        return job_id, queued
+
+    def get_intelligence_job(self, scan_id: str, depth: str = "short") -> Optional[Dict[str, Any]]:
+        with self._lock:
+            row = self.conn.execute("SELECT * FROM intelligence_jobs WHERE scan_id=? AND depth=?", (scan_id, depth)).fetchone()
+        if not row: return None
+        result = dict(row)
+        if result.get("report"):
+            try: result["report"] = json.loads(result["report"])
+            except (ValueError, TypeError): result["report"] = None
+        return result
+
+    def update_intelligence_job(self, job_id: str, status: str, report=None, error=None, usage=None, finish_reason=None) -> None:
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        started = now if status == "running" else None
+        finished = now if status in ("completed", "partial", "unavailable", "failed", "interrupted") else None
+        input_tokens = output_tokens = total_tokens = None
+        if isinstance(usage, dict):
+            for key, var in (("input_tokens", "input_tokens"), ("output_tokens", "output_tokens"), ("total_tokens", "total_tokens")):
+                value = usage.get(key)
+                if isinstance(value, int) and value >= 0:
+                    if key == "input_tokens": input_tokens = value
+                    elif key == "output_tokens": output_tokens = value
+                    else: total_tokens = value
+        with self._lock, self.conn:
+            if report is None:
+                # Never wipe an already-published preliminary report with NULL:
+                # keep the running summary so the UI never falls empty mid-run.
+                self.conn.execute("UPDATE intelligence_jobs SET status=?, started_at=COALESCE(?, started_at), finished_at=COALESCE(?, finished_at), error=?, input_tokens=COALESCE(?, input_tokens), output_tokens=COALESCE(?, output_tokens), total_tokens=COALESCE(?, total_tokens), finish_reason=COALESCE(?, finish_reason) WHERE id=?",
+                                  (status, started, finished, error, input_tokens, output_tokens, total_tokens, finish_reason, job_id))
+            else:
+                self.conn.execute("UPDATE intelligence_jobs SET status=?, started_at=COALESCE(?, started_at), finished_at=COALESCE(?, finished_at), report=?, error=?, input_tokens=COALESCE(?, input_tokens), output_tokens=COALESCE(?, output_tokens), total_tokens=COALESCE(?, total_tokens), finish_reason=COALESCE(?, finish_reason) WHERE id=?",
+                                  (status, started, finished, json.dumps(report, ensure_ascii=False) if report is not None else None, error, input_tokens, output_tokens, total_tokens, finish_reason, job_id))
+
+    def create_job(self, domain: str, target_url: Optional[str] = None, owner_ip: Optional[str] = None) -> str:
         job_id = str(uuid.uuid4())
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        with self.conn:
+        with self._lock, self.conn:
             self.conn.execute(
-                "INSERT INTO jobs (id, domain, status, started_at) VALUES (?, ?, 'pending', ?);",
-                (job_id, domain, now),
+                "INSERT INTO jobs (id, domain, target_url, owner_ip, status, started_at) VALUES (?, ?, ?, ?, 'pending', ?);",
+                (job_id, domain, target_url, owner_ip, now),
             )
         return job_id
 
@@ -100,22 +180,24 @@ class Storage:
         if finished_at is None and status in ("completed", "failed", "interrupted"):
             finished_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-        with self.conn:
+        with self._lock, self.conn:
             self.conn.execute(
                 "UPDATE jobs SET status = ?, error = ?, finished_at = ? WHERE id = ?;",
                 (status, error, finished_at, job_id),
             )
 
     def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM jobs WHERE id = ?;", (job_id,))
-        row = cursor.fetchone()
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM jobs WHERE id = ?;", (job_id,))
+            row = cursor.fetchone()
         return dict(row) if row else None
 
     def list_jobs(self, limit: int = 30) -> List[Dict[str, Any]]:
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM jobs ORDER BY started_at DESC LIMIT ?;", (limit,))
-        return [dict(row) for row in cursor.fetchall()]
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM jobs ORDER BY started_at DESC LIMIT ?;", (limit,))
+            return [dict(row) for row in cursor.fetchall()]
 
     def save_source_run(
         self,
@@ -127,7 +209,7 @@ class Storage:
         raw_report: Optional[str],
         error: Optional[str],
     ) -> None:
-        with self.conn:
+        with self._lock, self.conn:
             self.conn.execute(
                 """
                 INSERT INTO source_runs (job_id, source_id, status, started_at, finished_at, raw_report, error)
@@ -143,17 +225,15 @@ class Storage:
             )
 
     def get_source_runs(self, job_id: str) -> List[Dict[str, Any]]:
-        cursor = self.conn.cursor()
-        cursor.execute(
-            "SELECT * FROM source_runs WHERE job_id = ? ORDER BY id ASC;",
-            (job_id,),
-        )
-        return [dict(row) for row in cursor.fetchall()]
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM source_runs WHERE job_id = ? ORDER BY id ASC;", (job_id,))
+            return [dict(row) for row in cursor.fetchall()]
 
     def save_checks(self, checks_list: List[Dict[str, Any]]) -> None:
         if not checks_list:
             return
-        with self.conn:
+        with self._lock, self.conn:
             self.conn.executemany(
                 """
                 INSERT INTO checks (job_id, source_id, native_check_id, canonical_check_id, status, evidence, observed_at)
@@ -163,13 +243,11 @@ class Storage:
             )
 
     def get_checks(self, job_id: str) -> List[Dict[str, Any]]:
-        cursor = self.conn.cursor()
-        cursor.execute(
-            "SELECT * FROM checks WHERE job_id = ? ORDER BY id ASC;",
-            (job_id,),
-        )
-        return [dict(row) for row in cursor.fetchall()]
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM checks WHERE job_id = ? ORDER BY id ASC;", (job_id,))
+            return [dict(row) for row in cursor.fetchall()]
 
 
     def close(self) -> None:
-        self.conn.close()
+        with self._lock: self.conn.close()

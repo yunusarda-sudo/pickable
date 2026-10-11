@@ -9,6 +9,7 @@ import datetime
 import json
 import time
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit, urljoin
 
 from app.adapters.base import Adapter, AdapterResult, CheckRecord
 from app.config import Config
@@ -117,9 +118,14 @@ class OraAdapter(Adapter):
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         start_time = time.monotonic()
-        remaining_timeout = lambda: max(1, int(self.timeout - (time.monotonic() - start_time)))
+        def remaining_timeout():
+            remaining = self.timeout - (time.monotonic() - start_time)
+            if remaining <= 0:
+                raise TimeoutError("Ora scan deadline exceeded")
+            return remaining
 
-        await self.rate_limiter.acquire()
+        allowance = remaining_timeout()
+        await asyncio.wait_for(self.rate_limiter.acquire(), timeout=allowance)
 
         # Step 1: POST https://ora.ai/api/scan
         scan_url = f"{self.base_url}/scan"
@@ -172,12 +178,19 @@ class OraAdapter(Adapter):
             except Exception:
                 pass
 
-            poll_url = body_json.get("poll_url") or f"{self.base_url}/score/{domain}"
+            if not isinstance(body_json, dict):
+                raise ValueError("Ora returned an invalid polling response")
+            poll_url = urljoin(scan_url, body_json.get("poll_url") or f"{self.base_url}/score/{domain}")
+            expected_origin, poll = urlsplit(self.base_url), urlsplit(poll_url)
+            if ((poll.scheme, poll.hostname, poll.port) != (expected_origin.scheme, expected_origin.hostname, expected_origin.port)
+                    or poll.username is not None or poll.password is not None):
+                raise ValueError("Ora polling URL must remain on the configured provider origin")
 
             # Polling loop
-            while remaining_timeout() > 0:
-                await asyncio.sleep(2)
-                await self.rate_limiter.acquire()
+            while True:
+                await asyncio.sleep(min(2, remaining_timeout()))
+                allowance = remaining_timeout()
+                await asyncio.wait_for(self.rate_limiter.acquire(), timeout=allowance)
                 poll_res = await loop.run_in_executor(
                     None,
                     lambda: safe_fetch(
@@ -191,7 +204,7 @@ class OraAdapter(Adapter):
                     raw_report_str = poll_res.body.decode("utf-8", errors="replace")
                     try:
                         data = json.loads(raw_report_str)
-                        if data.get("status") not in ("pending", "running"):
+                        if isinstance(data, dict) and data.get("status") not in ("pending", "running"):
                             break
                     except json.JSONDecodeError:
                         break
@@ -206,7 +219,7 @@ class OraAdapter(Adapter):
                 error=f"Ora API returned HTTP {fetch_res.status}",
             )
 
-        if not data:
+        if not isinstance(data, dict) or not data:
             return AdapterResult(
                 source_id=self.source_id,
                 status="failed",

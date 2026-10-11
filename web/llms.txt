@@ -1,0 +1,34 @@
+# Pickable
+
+> Pickable is a public website analysis demo. It combines agent-readiness observations from Ora and Cloudflare's isitagentready.com with basic marketing visibility checks. Scores describe available evidence; they do not guarantee task completion, referrals, rankings, or revenue.
+
+## Product
+- [Pickable home](https://solveny.dev/): enter a public domain to request an asynchronous scan.
+- [About Pickable](https://solveny.dev/about): purpose, sources, and score limitations.
+- [Demo and limits](https://solveny.dev/pricing): free public demo and configured resource limits.
+
+## Documentation
+- [Getting started and interpretation](https://solveny.dev/docs)
+- [REST and MCP API guide](https://solveny.dev/api)
+- [Agent integration guide](https://solveny.dev/docs/agent-scan)
+- [Authentication and CSRF notes](https://solveny.dev/auth.md)
+- [Full agent reference](https://solveny.dev/llms-full.txt)
+- [Documentation-specific index](https://solveny.dev/docs-llms.txt)
+- [API-specific index](https://solveny.dev/api-llms.txt)
+
+## Machine-readable resources
+- [OpenAPI 3.1](https://solveny.dev/openapi.json)
+- [MCP server card](https://solveny.dev/.well-known/mcp/server-card.json)
+- [ARD manifest](https://solveny.dev/.well-known/ard.json)
+- [Agent discovery document](https://solveny.dev/.well-known/agent.json)
+- [Agent Skills index](https://solveny.dev/.well-known/agent-skills/index.json)
+- [Pickable scan skill](https://solveny.dev/skills/pickable-scan/SKILL.md)
+- [RFC 9727 API catalog](https://solveny.dev/.well-known/api-catalog)
+
+## Important behavior
+- Scan creation is asynchronous. Poll the scan status endpoint and treat a report received while sources are running as partial.
+- Scan history, statuses, reports, previews, and intelligence reads are scoped to the caller’s direct peer IP address. Forwarded-IP headers are not trusted; clients behind a reverse proxy may share the same scope. This is not account authentication or a confidentiality guarantee. Provider evidence is redacted and raw-source endpoints return 404.
+- REST scan creation uses a CSRF token from GET /api/config or a configured operator-issued bearer key.
+- MCP read tools are available by default. MCP scan creation requires both server-operator opt-in and bearer authorization.
+- The MCP HTTP endpoint accepts POST requests; use the agent integration guide or server card for connection details.
+- Follow Retry-After when scan submission returns 429.

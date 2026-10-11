@@ -19,15 +19,39 @@ function setup(fetchData) {
   }
   const get = id => { if (!nodes.has(id)) nodes.set(id, node()); return nodes.get(id); };
   const context = vm.createContext({ document: { getElementById: get, createElement: node, querySelectorAll: () => [], body: { dataset: {} } },
-    AbortSignal, setTimeout() {}, fetch: async url => ({ ok: true, headers: { get: () => 'application/json' }, json: () => fetchData(url) }),
+    AbortSignal, setTimeout() { return 1; }, clearTimeout() {}, fetch: async url => ({ ok: true, headers: { get: () => 'application/json' }, json: () => fetchData(url) }),
   });
   const code = fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8').replace(/initialize\(\);\s*$/, '');
-  vm.runInContext(code + '\nglobalThis.ui = {state, refreshHistory, renderReport, formatTime, updateSources, loadScan, clearReport, initialize, modelReport: typeof modelReport === "function" ? modelReport : undefined, reportSummary: typeof reportSummary === "function" ? reportSummary : undefined, setView: typeof setView === "function" ? setView : undefined};', context);
+  vm.runInContext(code + '\nglobalThis.ui = {state, refreshHistory, renderReport, renderIntelligence, formatTime, updateSteps, loadScan, clearReport, initialize, modelReport: typeof modelReport === "function" ? modelReport : undefined, reportSummary: typeof reportSummary === "function" ? reportSummary : undefined, setView: typeof setView === "function" ? setView : undefined};', context);
   return { ...context.ui, get };
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
+function visibleText(node) {
+  return [node.textContent || '', ...(node.children || []).map(visibleText)].join(' ');
+}
 const report = () => ({ domain: 'old.example', scanned_at: '2026-10-10T12:00:00Z', score: {total: 20, coverage: 10, breakdown: {}}, checks: [], sources: [], recommendations: [] });
 const jobs = [{id: 'a', domain: 'a.example'}, {id: 'b', domain: 'b.example'}];
+
+test('preliminary intelligence is clearly labeled while enrichment continues', () => {
+  const ui = setup(() => ({}));
+  ui.renderIntelligence({status:'running', depth:'short', report:{analysis_stage:'preliminary',
+    product_summary:'Ön bulgu: TeamFlow — Planning for distributed teams', target_customers:'Not verified',
+    problem:'Not verified', value_proposition:'Not verified', competitive_landscape:'Not researched',
+    workflows:[], evidence_refs:['homepage'], unknowns:[], sources:[{label:'TeamFlow', url:'https://example.com/'}]}});
+  assert.match(ui.get('intelligence-status').textContent, /Quick page summary/i);
+  assert.equal(ui.get('intelligence-summary').textContent, 'Ön bulgu: TeamFlow — Planning for distributed teams');
+  assert.equal(ui.get('intelligence-sources').children[0].href, 'https://example.com/');
+  assert.equal(ui.get('deep-analysis').disabled, true);
+});
+
+test('terminal partial intelligence does not claim enrichment is still running', () => {
+  const ui = setup(() => ({}));
+  ui.renderIntelligence({status:'partial', depth:'short', report:{analysis_stage:'preliminary',
+    product_summary:'Page summary', target_customers:'Unknown', problem:'Unknown', value_proposition:'Unknown',
+    competitive_landscape:'Not researched', workflows:[], evidence_refs:['homepage'], unknowns:[]}});
+  assert.match(ui.get('intelligence-status').textContent, /Partial analysis/);
+  assert.doesNotMatch(ui.get('intelligence-status').textContent, /continues/i);
+});
 
 test('history selection clears previous evidence and download links before response', async () => {
   let resolveScan;
@@ -60,17 +84,17 @@ test('missing or non-string timestamps never become epoch dates', () => {
   for (const value of [null, undefined, false, 0, [], {}, 'invalid']) assert.equal(ui.formatTime(value), 'No timestamp');
 });
 
-test('malformed provider summaries and recommendation containers render safely', () => {
+test('malformed provider fields and recommendation containers render safely', () => {
   const ui = setup(() => ({}));
   const bad = report();
   bad.sources = [null, {id:'ora', score: {}, grade: [], level: true, check_count: {}, error: {message:'bad'}, observed_at: []}];
   bad.recommendations = {unexpected:'not an array'};
   assert.doesNotThrow(() => ui.renderReport(bad));
   assert.doesNotMatch(ui.get('ora-detail').textContent, /\[object Object\]|true\/5/);
-  assert.equal(ui.get('recommendations').children.length, 1);
+  assert.equal(ui.get('action-list').children.length, 1);
 });
 
-test('non-string native fields are displayed as JSON without coercion or evidence mutation', () => {
+test('raw provider evidence never reaches the customer recommendations', () => {
   const ui = setup(() => ({}));
   const bad = report();
   const native = {toString: 0};
@@ -79,9 +103,8 @@ test('non-string native fields are displayed as JSON without coercion or evidenc
   bad.recommendations = [{recommendation:native}];
   const before = JSON.stringify(bad);
   assert.doesNotThrow(() => ui.renderReport(bad));
-  assert.equal(ui.get('checks').children[0].children[1].children[1].textContent, 'Native: {"toString":0}');
-  assert.match(ui.get('specific-list').children[0].children[0].textContent, /\{"toString":0\}/);
-  assert.match(ui.get('recommendations').children[0].textContent, /"toString": 0/);
+  assert.equal(ui.get('action-list').children.length, 1);
+  assert.doesNotMatch(ui.get('action-list').children[0].textContent, /toString|Native status/);
   assert.equal(JSON.stringify(bad), before);
 });
 
@@ -104,7 +127,7 @@ test('running scan shows a partial report as soon as one exists and keeps pollin
   assert.equal(ui.get('results').hidden, false);
   assert.equal(ui.get('scan-button').disabled, true);
   assert.match(ui.get('notice').textContent, /Partial results/);
-  assert.equal(ui.get('ora-state').textContent, 'Waiting');
+  assert.equal(ui.get('step-ora').lastElementChild.textContent, '');
 });
 
 test('a non-final score is never displayed', () => {
@@ -145,14 +168,14 @@ test('running scan without any source report stays on the loading view', async (
   assert.equal(ui.get('report-view').hidden, true);
 });
 
-test('terminal scan enters the report view and supplies its own download link', async () => {
+test('terminal scan enters the report view without provider payload downloads', async () => {
   const ui = setup(url => url === '/api/scans' ? {scans:[]} : {status:'completed', sources:[], report:report()});
   await ui.loadScan('finished', ui.state.generation);
   assert.equal(ui.get('landing-view').hidden, true);
   assert.equal(ui.get('loading-view').hidden, true);
   assert.equal(ui.get('report-view').hidden, false);
   assert.equal(ui.get('results').hidden, false);
-  assert.equal(ui.get('download-report').href, '/api/scans/finished/report');
+  assert.equal(ui.get('download-report').href, undefined);
   assert.equal(ui.get('scan-button').disabled, false);
 });
 
@@ -227,15 +250,64 @@ test('empty report overview remains unmeasured and handles missing checks safely
 });
 
 
-test('cached reports and source disagreements are disclosed in the report', () => {
+test('customer report hides internal cache and source-disagreement metadata', () => {
   const ui = setup(() => ({}));
   const value = report();
   value.sources = [{id:'ora', status:'completed', served_from_cache:true, result_age_seconds:12698}];
   value.checks = [{check_id:'discovery.sitemap', title:'Sitemap', category:'discovery',
     scoring_status:'PASS', scoring_source:'cloudflare', sources:{}, source_disagreement:true}];
   ui.renderReport(value);
-  assert.match(ui.get('ora-detail').textContent, /Cached report.*212 minutes old when received/);
-  assert.match(ui.get('report-summary').textContent, /1 source disagreement/);
-  assert.match(ui.get('report-summary').textContent, /Ora returned cached results/);
-  assert.match(ui.get('report-summary').textContent, /bookings and payments are not verified/);
+  assert.doesNotMatch(ui.get('report-summary').textContent, /cached|source disagreement/i);
+  assert.doesNotMatch(ui.get('action-list').textContent, /served_from_cache|result_age_seconds/);
+});
+
+test('agent readiness exposes checks grouped by score layer with plain-language meaning, provider, and recommendation', () => {
+  const ui = setup(() => ({}));
+  const value = report();
+  value.score.breakdown = {
+    discovery: {label:'Discoverability', points:0, max_points:20, measured:1, defined:1},
+    content: {label:'Readability', points:null, max_points:25, measured:0, defined:1},
+    usability: {label:'Usability', points:null, max_points:35, measured:0, defined:1},
+  };
+  value.checks = [
+    {check_id:'discovery.sitemap', category:'discovery', title:'XML sitemap', scoring_status:'FAIL',
+      scoring_source:'cloudflare', measurement_definition:'A sitemap helps agents discover the pages on your site.',
+      reason:'Cloudflare reported that no sitemap was found.', sources:{cloudflare:{status:'FAIL', native_status:'fail',
+        raw:{title:'raw provider title', recommendation:'raw provider recommendation', debug:'provider-json-secret'}}}},
+    {check_id:'content.markdown', category:'content', title:'Markdown delivery', scoring_status:'UNKNOWN',
+      measurement_definition:'Markdown makes site content easier for agents to read.',
+      reason:'No definitive evidence was available.', sources:{}},
+  ];
+  value.recommendations = [{check_id:'discovery.sitemap', source:'cloudflare',
+    recommendation:'Publish /sitemap.xml and reference it from robots.txt.'}];
+
+  ui.renderReport(value);
+  const findings = ui.get('check-findings');
+  const text = visibleText(findings);
+  assert.ok(findings.children.length >= 3, 'findings should include a group for every existing score category');
+  assert.match(text, /Discoverability/);
+  assert.match(text, /Readability/);
+  assert.match(text, /Usability/);
+  assert.match(text, /XML sitemap/);
+  assert.match(text, /Missing/);
+  assert.match(text, /A sitemap helps agents discover the pages on your site\./);
+  assert.match(text, /Cloudflare/);
+  assert.match(text, /Publish \/sitemap\.xml and reference it from robots\.txt\./);
+  assert.match(text, /Markdown delivery/);
+  assert.match(text, /Unclear/);
+  assert.doesNotMatch(text, /raw provider title|raw provider recommendation|provider-json-secret|native_status|"sources"/);
+});
+
+test('readiness findings ignore malformed checks and never show raw provider payloads', () => {
+  const ui = setup(() => ({}));
+  const value = report();
+  value.checks = [null, {check_id:'discovery.sitemap', category:'discovery', title:'XML sitemap',
+    scoring_status:'FAIL', scoring_source:'cloudflare', measurement_definition:'A sitemap helps agents discover pages.',
+    reason:'Cloudflare reported a missing sitemap.', sources:{cloudflare:{raw:{native_status:{unsafe:true},
+      error:'stack trace secret'}}}}, {check_id:'unknown.category', category:'unknown', title:{unsafe:true},
+    scoring_status:'PASS', sources:{}}];
+  assert.doesNotThrow(() => ui.renderReport(value));
+  const text = visibleText(ui.get('check-findings'));
+  assert.match(text, /XML sitemap/);
+  assert.doesNotMatch(text, /stack trace secret|unsafe|\[object Object\]/);
 });

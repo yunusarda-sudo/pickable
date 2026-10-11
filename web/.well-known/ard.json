@@ -1,0 +1,58 @@
+{
+  "entries": [
+    {
+      "@context": "https://agenticresourcediscovery.org/context/v1",
+      "identifier": "urn:air:solveny.dev:mcp:pickable",
+      "displayName": "Pickable MCP server",
+      "type": "application/mcp-server-card+json",
+      "url": "https://solveny.dev/.well-known/mcp/server-card.json",
+      "description": "Read peer-IP-scoped Pickable scan history and reports; optionally start a domain scan when enabled.",
+      "version": "1.0.0",
+      "capabilities": [
+        "describe_pickable",
+        "list_scans",
+        "get_scan_report"
+      ],
+      "representativeQueries": [
+        "Check what Pickable can do for a public website readiness scan.",
+        "List Pickable scans within the caller direct peer-IP scope and inspect a redacted report.",
+        "Read the current status and evidence for a Pickable scan."
+      ]
+    },
+    {
+      "@context": "https://agenticresourcediscovery.org/context/v1",
+      "identifier": "urn:air:solveny.dev:skill:pickable-scan",
+      "displayName": "Pickable scan skill",
+      "type": "application/ai-skill+md",
+      "url": "https://solveny.dev/skills/pickable-scan/SKILL.md",
+      "description": "Request and interpret Pickable scans for public websites through REST or MCP.",
+      "version": "1.0.0",
+      "capabilities": [
+        "public-domain-scan",
+        "scan-report-interpretation"
+      ],
+      "representativeQueries": [
+        "Scan this public website with Pickable and explain the report.",
+        "Retrieve and interpret the current Pickable scan status for a domain."
+      ]
+    },
+    {
+      "@context": "https://agenticresourcediscovery.org/context/v1",
+      "identifier": "urn:air:solveny.dev:api:pickable-rest",
+      "displayName": "Pickable REST API",
+      "type": "application/json",
+      "url": "https://solveny.dev/openapi.json",
+      "description": "Public-target scan creation, peer-IP-scoped status/report/preview/intelligence, health, and MCP HTTP API contract.",
+      "version": "1.0.0",
+      "capabilities": [
+        "scan-status",
+        "scan-report",
+        "scan-creation"
+      ],
+      "representativeQueries": [
+        "Create an asynchronous Pickable scan for a public domain.",
+        "Read scan status, source evidence, or a normalized Pickable report."
+      ]
+    }
+  ]
+}

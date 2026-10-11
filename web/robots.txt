@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+
+# This rule guides crawlers; it is not an access-control or privacy boundary.
+Sitemap: https://solveny.dev/sitemap.xml
+Agentmap: https://solveny.dev/.well-known/ard.json

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="Pickable public website readiness demo">
+  <rect width="1200" height="630" fill="#141714"/>
+  <circle cx="945" cy="180" r="330" fill="none" stroke="#ffffff" stroke-opacity=".05" stroke-width="2"/>
+  <circle cx="945" cy="180" r="265" fill="none" stroke="#ffffff" stroke-opacity=".05" stroke-width="2"/>
+  <g transform="translate(104 104)" fill="none" stroke="#d5f784" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M27 8.63C18.38 10.85 12 18.69 12 28c0 11.05 8.95 20 20 20s20-8.95 20-20V8"/>
+    <path d="M12 28v28M42 8h10L41 19"/>
+  </g>
+  <text x="187" y="151" fill="#f0f1e9" font-family="Arial,sans-serif" font-size="44" font-weight="700" letter-spacing="-2">pickable<tspan fill="#d5f784">.</tspan></text>
+  <text x="104" y="326" fill="#f0f1e9" font-family="Arial,sans-serif" font-size="67" font-weight="500" letter-spacing="-3">Is your site ready to grow?</text>
+  <text x="107" y="392" fill="#d5f784" font-family="Arial,sans-serif" font-size="33">See your website through the eyes of agents.</text>
+  <text x="107" y="516" fill="#9aa590" font-family="Arial,sans-serif" font-size="23">PUBLIC WEBSITE ANALYSIS DEMO</text>
+</svg>

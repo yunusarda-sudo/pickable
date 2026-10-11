@@ -1,9 +1,7 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
-const state = { report: null, jobId: null, token: null, generation: 0, config: null };
+const state = { report: null, jobId: null, token: null, generation: 0, config: null, intelligenceTimer: null, intelligenceDepth: "short", intelligenceMissingPolls: 0 };
 const nativeLabels = { PASS: "Pass", FAIL: "Missing", WARNING: "Warning", UNKNOWN: "Unclear", NOT_APPLICABLE: "N/A", PENDING: "Waiting" };
-const SOURCES = [["ora", "Ora"], ["cloudflare", "Cloudflare"]];
-const sourceName = (id) => (SOURCES.find(([key]) => key === id) || [, "Source"])[1];
 const sourceLabels = { completed: "Completed", partial: "Partial", running: "Running", pending: "Waiting", unavailable: "Unavailable", failed: "Error", timeout: "Timed out", interrupted: "Interrupted" };
 
 function element(tag, className, text) {
@@ -15,7 +13,6 @@ function element(tag, className, text) {
 function notify(message) { $("notice").textContent = message; $("notice").hidden = !message; }
 function busy(on) { $("scan-button").disabled = on; $("scan-button").ariaLabel = on ? "Scan in progress" : "Start scan"; }
 function scalar(value, fallback = "") { return typeof value === "string" || (typeof value === "number" && Number.isFinite(value)) ? String(value) : fallback; }
-function display(value, fallback = "") { if (value === null || value === undefined) return fallback; return scalar(value) || JSON.stringify(value) || fallback; }
 function badge(status) { const key = typeof status === "string" && Object.hasOwn(nativeLabels, status) ? status : "UNKNOWN"; return element("span", `pill ${key}`, nativeLabels[key]); }
 function formatTime(value) { if (typeof value !== "string" || !value.trim()) return "No timestamp"; const date = new Date(value); return Number.isNaN(date.getTime()) ? "No timestamp" : date.toLocaleString("en-US"); }
 
@@ -34,11 +31,10 @@ function returnToLanding() {
 }
 
 function clearReport() {
+  clearTimeout(state.intelligenceTimer); state.intelligenceTimer = null;
+  state.intelligenceMissingPolls = 0;
   state.report = null; state.jobId = null; state.renderedKey = null;
   $("results").hidden = true; $("empty-state").hidden = false;
-  for (const id of ["download-report", "ora-raw", "cloudflare-raw", "growth-raw"]) $(id).removeAttribute("href");
-  $("evidence-dialog").close();
-  updateSources();
 }
 
 async function api(path, options = {}) {
@@ -52,67 +48,6 @@ async function api(path, options = {}) {
   return data;
 }
 
-function updateSources(sources = []) {
-  if (!Array.isArray(sources)) sources = sources && typeof sources === "object" ? Object.entries(sources).map(([id, value]) => ({ ...value, id })) : [];
-  for (const [id] of SOURCES) {
-    const source = sources.find((s) => s && (s.id || s.source_id) === id);
-    const status = scalar(source?.status, "pending");
-    $(id + "-state").textContent = Object.hasOwn(sourceLabels, status) ? sourceLabels[status] : status;
-    $(id + "-state").className = "source-state " + (status === "completed" ? "completed" : ["pending", "running"].includes(status) ? "running" : "unavailable");
-    const parts = [];
-    if (scalar(source?.score)) parts.push(`Source score: ${scalar(source.score)}/100${scalar(source.grade) ? " · " + scalar(source.grade) : ""}`);
-    if (scalar(source?.level)) parts.push(`Source level: ${scalar(source.level)}/5`);
-    if (scalar(source?.check_count)) parts.push(`${scalar(source.check_count)} checks`);
-    if (source?.served_from_cache === true) parts.push(`Cached report${typeof source.result_age_seconds === "number" && source.result_age_seconds >= 0 ? ` · ${Math.round(source.result_age_seconds / 60)} minutes old when received` : ""}`);
-    if (scalar(source?.error)) parts.push(scalar(source.error));
-    if (source?.observed_at) parts.push(formatTime(source.observed_at));
-    $(id + "-detail").textContent = parts.join(" · ") || (["running", "pending"].includes(status) ? "Waiting for source report…" : "No results yet");
-  }
-}
-
-function openEvidence(check) {
-  $("evidence-title").textContent = check.title;
-  $("evidence-reason").textContent = `${check.measurement_definition} ${check.reason}`;
-  for (const [id] of SOURCES) {
-    const target = id + "-evidence";
-    const observation = check.sources[id];
-    $(target).textContent = observation?.raw ? JSON.stringify({ source_check_id: observation.source_check_id, observed_at: observation.observed_at, raw: observation.raw }, null, 2) : "No check result from this source.";
-  }
-  $("evidence-dialog").showModal();
-}
-
-function renderChecks() {
-  const tbody = $("checks"); tbody.replaceChildren();
-  const filter = $("filter").value;
-  const checks = (state.report?.checks || []).filter((check) => {
-    if (filter === "all") return true;
-    if (filter === "pass") return check.combined_status === "PASS";
-    return check.combined_status === "UNKNOWN";
-  });
-  for (const check of checks) {
-    const tr = element("tr");
-    const title = element("td"); const button = element("button", "check-button", check.title);
-    button.addEventListener("click", () => openEvidence(check));
-    title.append(button);
-    tr.append(title);
-    for (const [source] of SOURCES) {
-      const td = element("td"); const observation = check.sources[source];
-      td.append(badge(observation?.status || "UNKNOWN"));
-      if (observation?.native_status !== null && observation?.native_status !== undefined) td.append(element("small", "", `Native: ${display(observation.native_status)}`));
-      tr.append(td);
-    }
-    const score = element("td"); score.append(badge(check.scoring_status));
-    score.append(element("small", "", check.scoring_source ? `${sourceName(check.scoring_source)} result` : "Not scored"));
-    tr.append(score, element("td", "", check.reason)); tbody.append(tr);
-  }
-  if (!checks.length) { const td = element("td", "", "No checks match this filter."); td.colSpan = 5; const tr = element("tr"); tr.append(td); tbody.append(tr); }
-}
-
-const categoryCopy = {
-  discovery: ["Discoverability", "Can agents find your entry points?", "01"],
-  content: ["Readability", "Is your content easy for machines to read?", "02"],
-  usability: ["Usability", "Are there integration and authentication signals?", "03"],
-};
 const checkGuidance = {
   "discovery.sitemap": ["A sitemap helps agents discover the pages on your site.", "Publish a valid XML sitemap and reference it in robots.txt."],
   "discovery.link_headers": ["Link headers announce your API, docs and other machine entry points.", "Advertise your machine entry points with the right HTTP Link relations."],
@@ -133,15 +68,8 @@ function modelReport(report) {
 }
 function reportSummary(report) {
   const model = modelReport(report);
-  if (report?.score?.total === null || report?.score?.total === undefined) return "Not enough definitive measurements for a preliminary score. See source details below.";
-  const conflicts = (Array.isArray(report.checks) ? report.checks : []).filter(c => c?.source_disagreement === true).length;
-  const cached = (Array.isArray(report.sources) ? report.sources : []).filter(s => s?.served_from_cache === true).map(s => sourceName(s.id));
-  return `${model.passed} checks passed, ${model.failed} reported missing. ${model.uncertain} were not scored as a definitive PASS/FAIL. Findings are based on source reports; working sign-in, bookings and payments are not verified.${conflicts ? ` ${conflicts} source disagreement(s); the newest comparable observations are used.` : ""}${cached.length ? ` ${cached.join(", ")} returned cached results; check source observation times.` : ""}`;
-}
-function evidenceButton(check, label = "View source evidence ↗") {
-  const button = element("button", "evidence-link", label);
-  button.addEventListener("click", () => openEvidence(check));
-  return button;
+  if (report?.score?.total === null || report?.score?.total === undefined) return "We could not measure enough of this site to calculate a score yet.";
+  return `${model.passed} checks are in place. ${model.failed} opportunities can improve how agents discover and use your site.${model.uncertain ? ` ${model.uncertain} areas need more information.` : ""}`;
 }
 function renderReportExperience(report) {
   const model = modelReport(report);
@@ -152,42 +80,87 @@ function renderReportExperience(report) {
     const item = element("div", "count-item " + tone);
     item.append(element("strong", "", count), element("span", "", label)); $("report-counts").append(item);
   }
-  $("action-count").textContent = `${model.actions.length} checks`;
   $("action-list").replaceChildren();
-  for (const [index, check] of model.actions.entries()) {
+  const checks = Array.isArray(report.checks) ? report.checks : [];
+  const cards = [];
+  const covered = new Set();
+  for (const fix of Array.isArray(report.recommendations) ? report.recommendations : []) {
+    if (!fix || typeof fix.recommendation !== "string" || !fix.recommendation.trim()) continue;
+    const check = checks.find(row => row.check_id === fix.check_id);
+    if (check && check.scoring_status !== "FAIL") continue;
+    if (check) covered.add(check.check_id);
+    cards.push({check, title: check?.title || "Improve agent readiness", action: fix.recommendation,
+      source: check?.scoring_source || fix.source || null, providerRecommendation: fix.source === "cloudflare"});
+  }
+  for (const check of model.actions) {
+    if (covered.has(check.check_id)) continue;
+    const guidance = checkGuidance[check.check_id];
+    if (guidance) cards.push({check, title: check.title, action: guidance[1], source: check.scoring_source});
+  }
+  $("action-count").textContent = `${cards.length} recommendations`;
+  for (const [index, cardData] of cards.entries()) {
     const card = element("article", "action-card");
-    card.append(element("span", "action-number", String(index + 1).padStart(2,"0")), element("h3", "", check.title));
-    card.append(element("p", "", checkGuidance[check.check_id]?.[1] || "Review the reported gap together with its evidence."));
-    card.append(evidenceButton(check));
+    card.append(element("span", "action-number", String(index + 1).padStart(2,"0")), element("h3", "", cardData.title));
+    if (cardData.source === "cloudflare") card.append(element("span", "action-basis", cardData.providerRecommendation ? "Cloudflare recommendation" : "Cloudflare found this opportunity · Pickable recommendation"));
+    else if (cardData.source === "ora") card.append(element("span", "action-basis", "Recommended improvement"));
+    card.append(element("p", "", cardData.action));
     $("action-list").append(card);
   }
-  if (!model.actions.length) $("action-list").append(element("p", "report-empty", model.uncertain ? "No definitive gaps. Review unscored checks to see measurement gaps." : "No gaps found in the measured checks."));
-  $("category-findings").replaceChildren();
-  for (const [key, copy] of Object.entries(categoryCopy)) {
-    const checks = (Array.isArray(report.checks) ? report.checks : []).filter(c => c?.category === key);
+  if (!cards.length) $("action-list").append(element("p", "report-empty", model.uncertain ? "No changes to recommend from the available results. Some areas need more information." : "No improvements were identified in this scan."));
+}
+
+function renderReadinessFindings(report) {
+  const target = $("check-findings");
+  target.replaceChildren();
+  const checks = Array.isArray(report?.checks) ? report.checks.filter(check =>
+    check && typeof check === "object" && typeof check.check_id === "string" &&
+    typeof check.category === "string" && typeof check.title === "string") : [];
+  const recommendations = Array.isArray(report?.recommendations) ? report.recommendations.filter(item =>
+    item && typeof item === "object" && typeof item.check_id === "string" &&
+    typeof item.recommendation === "string" && item.recommendation.trim()) : [];
+  const layers = report?.score?.breakdown && typeof report.score.breakdown === "object" ? report.score.breakdown : {};
+  const categoryLabels = {discovery: "Discoverability", content: "Content", usability: "Usability"};
+  const categoryKeys = [...new Set([...Object.keys(layers), ...checks.map(check => check.category)])]
+    .filter(category => Object.hasOwn(categoryLabels, category));
+  const providerNames = {ora: "Ora", cloudflare: "Cloudflare"};
+  for (const category of categoryKeys) {
+    const layer = layers[category] && typeof layers[category] === "object" ? layers[category]
+      : {label: categoryLabels[category], points: null, max_points: 0, measured: 0,
+          defined: checks.filter(check => check.category === category).length};
     const section = element("section", "finding-category");
     const heading = element("div", "category-heading");
-    const titles = element("div"); titles.append(element("span", "category-number", copy[2]), element("h3", "", copy[0]), element("p", "", copy[1]));
-    const valid = checks.filter(c => ["PASS","FAIL"].includes(c.scoring_status));
-    heading.append(titles, element("span", "category-stat", valid.length ? `${valid.filter(c => c.scoring_status === "PASS").length}/${valid.length} definitive checks passed · ${checks.length - valid.length} not scored` : checks.length ? "No scorable results" : "Not measured")); section.append(heading);
-    for (const check of checks) {
+    const copy = element("div");
+    const title = scalar(layer.label, category);
+    copy.append(element("h3", "", title), element("p", "", `${scalar(layer.measured, "0")}/${scalar(layer.defined, "0")} checks measured`));
+    const result = layer.points === null || layer.points === undefined
+      ? "Not scored" : `${scalar(layer.points)}/${scalar(layer.max_points)}`;
+    heading.append(copy, element("span", "category-stat", result));
+    section.append(heading);
+    const grouped = checks.filter(check => check.category === category);
+    for (const check of grouped) {
       const row = element("details", "finding-row");
       const summary = element("summary");
-      summary.append(badge(check.scoring_status), element("span", "finding-title", check.title), element("span", "finding-arrow", "+")); row.append(summary);
-      if (check.source_disagreement === true) summary.append(element("span", "pill WARNING", "Sources differ"));
-      if (check.scope_difference === true) summary.append(element("span", "pill WARNING", "Different criteria"));
+      summary.append(badge(check.scoring_status), element("span", "finding-title", check.title), element("span", "finding-arrow", "+"));
+      row.append(summary);
       const body = element("div", "finding-body");
-      body.append(element("p", "finding-purpose", checkGuidance[check.check_id]?.[0] || check.measurement_definition));
-      const raw = check.sources?.[check.scoring_source || "ora"]?.raw || {};
-      const finding = scalar(raw.message) || scalar(raw.details);
-      if (finding) body.append(element("p", "finding-context", finding));
-      body.append(element("p", "finding-context", check.reason));
-      if (check.scoring_source) body.append(element("p", "finding-context", `${sourceName(check.scoring_source)} · Observed ${formatTime(check.sources?.[check.scoring_source]?.observed_at)}`));
-      body.append(evidenceButton(check));
-      row.append(body); section.append(row);
+      const meaning = scalar(check.measurement_definition) || checkGuidance[check.check_id]?.[0] || "This check is part of the layer score.";
+      body.append(element("p", "finding-purpose", meaning));
+      const source = providerNames[check.scoring_source];
+      if (source) body.append(element("p", "finding-context", `Result observed by ${source}.`));
+      if (check.scoring_status === "FAIL") {
+        const fix = recommendations.find(item => item.check_id === check.check_id)?.recommendation || checkGuidance[check.check_id]?.[1];
+        if (fix) body.append(element("p", "finding-context", `Recommended next step: ${fix}`));
+      } else if (check.scoring_status === "UNKNOWN" || check.scoring_status === "WARNING" || check.scoring_status === "PENDING") {
+        body.append(element("p", "finding-context", check.scoring_status === "PENDING"
+          ? "This check is waiting for source evidence." : "This check does not count as a pass or a failure in the score."));
+      } else if (check.scoring_status === "PASS") {
+        body.append(element("p", "finding-context", "This check passed in the available evidence."));
+      }
+      row.append(body);
+      section.append(row);
     }
-    if (!checks.length) section.append(element("p", "unmeasured-note", "This layer is not covered by this version; it earns no points."));
-    $("category-findings").append(section);
+    if (!grouped.length) section.append(element("p", "finding-context", "No individual checks are available for this score layer."));
+    target.append(section);
   }
 }
 
@@ -302,26 +275,86 @@ function renderReport(report) {
   state.report = report;
   $("empty-state").hidden = true; $("results").hidden = false;
   $("report-domain").textContent = report.domain;
-  $("report-time").textContent = `${formatTime(report.scanned_at)} · Mapping ${report.mapping_version || "0.1"}${state.config?.mode === "demo" ? " · TEST DATA" : ""}`;
+  $("report-time").textContent = `${formatTime(report.scanned_at)}${state.config?.mode === "demo" ? " · TEST DATA" : ""}`;
   renderScore(report.score, "");
-  updateSources(report.sources); renderChecks();
-  const specific = report.source_specific || [];
-  $("specific-title").textContent = `Source-specific findings (${specific.length})`;
-  $("specific-list").replaceChildren();
-  for (const item of specific) {
-    const row = element("details", "specific-row"); const raw = item.raw || {};
-    row.append(element("summary", "", `${sourceName(item.source)} · ${display(raw.name) || display(raw.title) || scalar(item.source_check_id)} · ${display(raw.status, "unknown")}`), element("pre", "", JSON.stringify(raw, null, 2)));
-    $("specific-list").append(row);
-  }
-  $("recommendations").replaceChildren();
-  const recommendations = Array.isArray(report.recommendations) ? report.recommendations : [];
-  for (const fix of recommendations) $("recommendations").append(element("pre", "", typeof fix === "string" ? fix : JSON.stringify(fix, null, 2)));
-  if (!recommendations.length) $("recommendations").append(element("p", "", "Ora did not provide recommendations in this report. Per-check explanations are in the evidence dialog."));
-  const root = `/api/scans/${encodeURIComponent(state.jobId)}`;
-  $("download-report").href = root + "/report"; $("ora-raw").href = root + "/raw/ora"; $("cloudflare-raw").href = root + "/raw/cloudflare"; $("growth-raw").href = root + "/raw/growth";
   renderReportExperience(report);
+  renderReadinessFindings(report);
   if (report.marketing) renderMarketing(report.marketing);
+  renderIntelligence(null);
+  if (state.jobId) pollIntelligence(state.jobId, state.intelligenceDepth);
   setView("report");
+}
+
+function renderIntelligence(job) {
+  const panel = $("intelligence-panel");
+  panel.hidden = false;
+  $("intelligence-details").replaceChildren(); $("intelligence-sources").replaceChildren();
+  const status = job?.status || "queued";
+  const localModel = state.config?.intelligence_provider === "ollama";
+  const preliminary = job?.report?.analysis_stage === "preliminary";
+  $("intelligence-status").textContent = preliminary && ["queued", "running"].includes(status)
+    ? "Quick page summary · detailed analysis continues"
+    : ({queued:"Queued",running:"Reading the public site…",completed:"Based on public evidence",unavailable:"AI analysis is unavailable",failed:"Analysis could not finish",partial:"Partial analysis · quick page summary available",interrupted:"Analysis was interrupted · quick page summary available"})[status] || "Preparing analysis";
+  $("deep-analysis").textContent = localModel ? "Analyze this page in more detail ↗" : "Research deeper ↗";
+  $("deep-analysis").disabled = ["queued", "running"].includes(status);
+  if (!job?.report) {
+    $("intelligence-summary").textContent = status === "unavailable" ? "The site scan is ready, but product analysis is unavailable. Check the analysis service configuration or try again later." : status === "failed" ? "The readiness report is available; product analysis did not complete." : status === "interrupted" ? "The readiness report is available; product analysis was interrupted. Reload to resume." : "We are identifying the product, its audience, and the value described on your URL.";
+    if (job?.error) $("intelligence-sources").append(element("p", "intelligence-unknown", String(job.error).slice(0, 300)));
+    return;
+  }
+  const report = job.report;
+  $("intelligence-summary").textContent = report.product_summary;
+  for (const [title, value] of [["Who it serves", report.target_customers], ["Problem addressed", report.problem], ["Value offered", report.value_proposition]]) {
+    const item = element("article", "intelligence-fact"); item.append(element("h3", "", title), element("p", "", value)); $("intelligence-details").append(item);
+  }
+  const competition = element("article", "intelligence-fact"); competition.append(element("h3", "", "Competitive landscape"), element("p", "", report.competitive_landscape || "Not assessed.")); $("intelligence-details").append(competition);
+  for (const workflow of Array.isArray(report.workflows) ? report.workflows : []) $("intelligence-details").append(element("p", "intelligence-workflow", workflow));
+  for (const unknown of Array.isArray(report.unknowns) ? report.unknowns : []) $("intelligence-details").append(element("p", "intelligence-unknown", "Needs verification: " + unknown));
+  for (const source of Array.isArray(report.sources) ? report.sources : []) {
+    if (typeof source?.url !== "string" || !/^https?:\/\//i.test(source.url)) continue;
+    const link = element("a", "intelligence-source", source.label || "Public homepage"); link.href = source.url; link.target = "_blank"; link.rel = "noopener noreferrer"; $("intelligence-sources").append(link);
+  }
+  for (const source of Array.isArray(report.web_sources) ? report.web_sources : []) {
+    if (typeof source?.url !== "string" || !/^https:\/\//i.test(source.url)) continue;
+    const link = element("a", "intelligence-source", source.label || "Research source"); link.href = source.url; link.target = "_blank"; link.rel = "noopener noreferrer"; $("intelligence-sources").append(link);
+  }
+  if (report.research_note) $("intelligence-sources").append(element("p", "intelligence-unknown", report.research_note));
+  if (job.error && ["partial", "failed", "interrupted"].includes(job.status)) $("intelligence-sources").append(element("p", "intelligence-unknown", "Note: " + String(job.error).slice(0, 300)));
+  $("deep-analysis").textContent = job.depth === "deep"
+    ? (localModel ? "Detailed page analysis complete" : "Deep research requested ↗")
+    : (localModel ? "Analyze this page in more detail ↗" : "Research deeper ↗");
+  $("deep-analysis").disabled = job.depth === "deep" || ["queued", "running"].includes(status);
+}
+
+async function pollIntelligence(scanId, depth = "short") {
+  if (state.intelligenceDepth !== depth) state.intelligenceMissingPolls = 0;
+  clearTimeout(state.intelligenceTimer); state.intelligenceDepth = depth;
+  try {
+    const data = await api(`/api/scans/${encodeURIComponent(scanId)}/intelligence${depth === "deep" ? "/deep" : ""}`);
+    if (state.jobId !== scanId || state.view !== "report") return;
+    const job = data.intelligence; renderIntelligence(job);
+    if (job && ["queued", "running"].includes(job.status)) state.intelligenceTimer = setTimeout(() => pollIntelligence(scanId, depth), 1800);
+    else if (!job && state.intelligenceMissingPolls++ < 6) state.intelligenceTimer = setTimeout(() => pollIntelligence(scanId, depth), 1200);
+    else if (!job) renderIntelligence({status:"failed"});
+  } catch {
+    // Transient disconnect (laptop sleep, backend wake, proxy hiccup):
+    // keep the readiness report and retry polling instead of going empty.
+    if (state.jobId !== scanId || state.view !== "report") return;
+    if (state.intelligenceMissingPolls++ < 8) state.intelligenceTimer = setTimeout(() => pollIntelligence(scanId, depth), 2500);
+  }
+}
+
+async function requestDeepAnalysis() {
+  if (!state.jobId) return;
+  $("deep-analysis").disabled = true;
+  try {
+    const result = await api(`/api/scans/${encodeURIComponent(state.jobId)}/intelligence`, { method: "POST", body: "{}" });
+    state.intelligenceDepth = "deep";
+    notify(state.config?.intelligence_provider === "ollama"
+      ? "Detailed page analysis started. This local run does not search the web."
+      : "Deep research started. We will update this section when it is ready.");
+    pollIntelligence(state.jobId, "deep");
+  } catch (error) { $("deep-analysis").disabled = false; notify(error.message); }
 }
 
 async function loadScan(id, generation) {
@@ -330,11 +363,10 @@ async function loadScan(id, generation) {
   if (generation !== state.generation) return;
   state.jobId = id;
   const status = result.status || result.job?.status;
-  updateSources(result.sources || result.source_runs || result.report?.sources);
   updateSteps(result.sources);
   if (["pending", "queued", "running"].includes(status)) {
     const key = JSON.stringify(result.sources || []);
-    if (result.report && key !== state.renderedKey) { state.renderedKey = key; renderReport(result.report); updateSources(result.sources); }  // live job status beats the partial report's "unavailable" placeholder
+    if (result.report && key !== state.renderedKey) { state.renderedKey = key; renderReport(result.report); }
     else if (!result.report) setView("loading");
     $("loading-domain").textContent = scalar(result.domain || result.job?.domain, $("domain").value);
     busy(true); notify(result.report ? "Partial results — more sources are still running; the report updates automatically." : "Sources are running. This can take a minute; results update as they arrive.");
@@ -344,7 +376,7 @@ async function loadScan(id, generation) {
     busy(false);
     const sources = result.report?.sources || result.sources || [];
     const failed = Array.isArray(sources) && sources.filter((s) => s.status !== "completed");
-    notify(["failed", "interrupted"].includes(status) ? "The scan could not finish. Any source reports received are kept." : failed?.length ? "Some sources did not complete. Showing available evidence; gaps are not counted as failures." : "");
+    notify(["failed", "interrupted"].includes(status) ? "The scan could not finish. Start a new scan to try again." : failed?.length ? "Some checks could not finish. Recommendations use the information available." : "");
     refreshHistory();
   }
 }
@@ -370,10 +402,11 @@ async function refreshHistory() {
 
 $("scan-form").addEventListener("submit", async (event) => {
   event.preventDefault(); const generation = ++state.generation; busy(true); notify("");
-  clearReport(); setView("loading"); $("loading-domain").textContent = $("domain").value.trim(); resetPreview($("domain").value.trim());
+  const url = $("domain").value.trim();
+  clearReport(); setView("loading"); $("loading-domain").textContent = url; resetPreview(url);
   try {
     if (!state.config) throw new Error("Backend is not ready. Reload the page or start the backend.");
-    const result = await api("/api/scans", { method: "POST", body: JSON.stringify({ domain: $("domain").value.trim() }) });
+    const result = await api("/api/scans", { method: "POST", body: JSON.stringify({ url }) });
     if (generation !== state.generation) return;
     const id = result.job_id || result.id;
     if (!id) throw new Error("Backend did not return a scan id.");
@@ -381,10 +414,9 @@ $("scan-form").addEventListener("submit", async (event) => {
     await loadScan(id, generation);
   } catch (error) { if (generation === state.generation) { busy(false); setView("landing"); notify(error.message); } }
 });
-$("filter").addEventListener("change", renderChecks);
 $("refresh-history").addEventListener("click", refreshHistory);
-$("close-dialog").addEventListener("click", () => $("evidence-dialog").close());
 $("new-analysis").addEventListener("click", returnToLanding);
+$("deep-analysis").addEventListener("click", requestDeepAnalysis);
 $("cancel-analysis").addEventListener("click", returnToLanding);
 $("open-history").addEventListener("click", () => { refreshHistory(); $("history-dialog").showModal(); });
 $("close-history").addEventListener("click", () => $("history-dialog").close());

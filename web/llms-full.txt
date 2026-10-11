@@ -1,0 +1,62 @@
+# Pickable — agent and developer reference
+
+
+## What Pickable reports
+
+For a public domain, Pickable runs source checks and returns redacted normalized findings and a preliminary score. The marketing view checks social links and blog activity. Reports preserve incomplete and unknown measurements instead of treating them as failures.
+
+The service does not independently prove that a real AI agent can finish a task. A score is not a promise of traffic, search visibility, conversions, purchases, or revenue. External sources and their methods can change.
+
+## REST workflow
+
+1. GET https://solveny.dev/api/config for a process CSRF token and demo/live mode.
+2. POST exactly one domain string for a public domain/root URL, or one url string for an exact public URL path, to https://solveny.dev/api/scans. Do not combine the fields. Send Content-Type: application/json and X-CSRF-Token. An operator-issued bearer key in Authorization may be used instead.
+3. Poll GET /api/scans/{job_id}. Status includes pending, running, completed, failed, and interrupted. A partial report may be present while sources are still running.
+4. GET /api/scans/{job_id}/report when ready. This route returns 404 until a report exists.
+5. Read preview metadata when available. Provider evidence is redacted; raw-source routes return 404.
+
+The complete request/response contract is https://solveny.dev/openapi.json.
+
+## Request shape and errors
+
+POST /api/scans accepts exactly one string field: {"domain":"example.com"} for a bare public domain or HTTP(S) root URL, or {"url":"https://example.com/pricing"} for an exact public URL path. Do not send both fields. Credentials, IP literals, and private/reserved destinations are rejected. Authentication query parameters are rejected; other query parameters are preserved and fragments are dropped. Domain input also rejects paths and ports. Send Content-Type: application/json and X-CSRF-Token from GET /api/config, or the configured bearer key. Poll GET /api/scans/{job_id}.
+
+- 400: missing/malformed Content-Length, invalid JSON, or invalid domain/body shape.
+- 403: disallowed Host or Origin, or missing/invalid CSRF and bearer credentials.
+- 408: request body read timeout.
+- 413: request body over 2,048 bytes.
+- 415: Content-Type is not application/json.
+- 429: queue or rate limit reached; obey Retry-After.
+- 503: scan backend unavailable.
+
+One worker processes scans serially with up to 20 waiting jobs. Default accepted-scan limits are 5 per peer address per hour and 30 globally per hour. Operators can change those values. The in-memory limiter resets on restart, and forwarded IP headers are not trusted, so a reverse proxy may cause users to share a per-peer limit.
+
+## Scoped reads and data handling
+
+Scan history, statuses, reports, previews, and intelligence reads are scoped to the caller’s direct peer IP address. Forwarded-IP headers are not trusted; clients behind a reverse proxy may share the same scope. This is not account authentication or a confidentiality guarantee. Provider evidence is redacted and raw-source endpoints return 404. Bearer credentials authorize scan creation and do not bypass read scope.
+
+## MCP
+
+Pickable implements JSON-RPC 2.0 over Streamable HTTP at the MCP path. Initialize first and use the protocol version returned by the server on later requests. Supported versions are 2025-03-26 and 2025-06-18. POST requests send Content-Type: application/json and Accept: application/json, text/event-stream. Responses use JSON. The initialized notification receives HTTP 202 with an empty body. GET returns 405; server-sent events are unsupported.
+
+Default tools: describe_pickable, list_scans, and get_scan_report. The latter takes job_id and returns the current status plus report when available. Optional start_website_scan is exposed only with PICKABLE_MCP_SCAN_ENABLED=1 and PICKABLE_AGENT_API_KEY set; the tool requires Authorization: Bearer and creates a real asynchronous scan. A missing or invalid key returns HTTP 401. After authorization, scan business failures such as an invalid domain or rate limit return HTTP 200 tool results with isError true and an error code in the text content. Successful 2025-06-18 calls also include structuredContent.
+
+There is no claim of OAuth, A2A task processing, WebMCP, agent identity, or payment support.
+
+## Links
+
+- [About](https://solveny.dev/about)
+- [Docs](https://solveny.dev/docs)
+- [API guide](https://solveny.dev/api)
+- [Agent integration](https://solveny.dev/docs/agent-scan)
+- [Pricing and limits](https://solveny.dev/pricing)
+- [Authentication](https://solveny.dev/auth.md)
+- [OpenAPI](https://solveny.dev/openapi.json)
+- [MCP server card](https://solveny.dev/.well-known/mcp/server-card.json)
+- [Agent skill](https://solveny.dev/skills/pickable-scan/SKILL.md)
+
+## Local product intelligence
+
+The local intelligence feature remains available: GET /api/scans/{job_id}/intelligence and GET /api/scans/{job_id}/intelligence/deep return scoped analysis. POST /api/scans/{job_id}/intelligence starts deep research and requires X-CSRF-Token; bearer credentials cannot replace that token. Intelligence is not an MCP tool or evidence of hosted availability.
+
+MCP start_website_scan accepts domain only (bare public domain or HTTP(S) root URL). It does not accept the REST url field. MCP list_scans and get_scan_report use the same direct peer-IP scope; a bearer key does not bypass it.

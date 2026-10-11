@@ -3,8 +3,22 @@ services:
   web:
     build: .
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - ALLOWED_HOSTS=solveny.dev,www.solveny.dev
+      - PICKABLE_PUBLIC_URL=https://solveny.dev
+      - PICKABLE_MCP_SCAN_ENABLED=${PICKABLE_MCP_SCAN_ENABLED:-0}
+      - PICKABLE_AGENT_API_KEY=${PICKABLE_AGENT_API_KEY:-}
+      - PICKABLE_SCANS_PER_HOUR=${PICKABLE_SCANS_PER_HOUR:-5}
+      - PICKABLE_GLOBAL_SCANS_PER_HOUR=${PICKABLE_GLOBAL_SCANS_PER_HOUR:-30}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:8b}
+      - INTELLIGENCE_PROVIDER=${INTELLIGENCE_PROVIDER:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-}
+      - OPENAI_QUICK_MODEL=${OPENAI_QUICK_MODEL:-gpt-6-luna}
+      - OPENAI_DEEP_MODEL=${OPENAI_DEEP_MODEL:-gpt-6.1-sol}
     volumes:
       - ./data:/app/data
     networks:

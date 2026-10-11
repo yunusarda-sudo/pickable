@@ -39,9 +39,9 @@ class UIPreviewTests(unittest.TestCase):
         self.assertEqual(job["status"], "completed")
         self.assertEqual(len(job["report"]["checks"]), 7)
         self.assertEqual(job["report"]["checks"][1]["combined_status"], "FAIL")
-        _, raw, headers = self.request(f"/api/scans/{job_id}/raw/ora")
-        self.assertIn("attachment", headers["Content-Disposition"])
-        self.assertEqual(json.loads(raw)["layers"][0]["checks"][1]["status"], "fail")
+        raw_status, raw, _ = self.request(f"/api/scans/{job_id}/raw/ora")
+        self.assertEqual(raw_status, 404)
+        self.assertNotIn(b"provider payload", raw)
         _, raw, _ = self.request("/api/scans")
         self.assertIn(job_id, raw.decode())
         _, raw, _ = self.request(f"/api/scans/{job_id}/preview")
@@ -50,6 +50,16 @@ class UIPreviewTests(unittest.TestCase):
     def test_scan_without_token_is_rejected(self):
         status, _, _ = self.request("/api/scans", {"domain": "example.com"}, {"Content-Type": "application/json"})
         self.assertEqual(status, 403)
+
+    def test_deep_analysis_in_demo_returns_unavailable(self):
+        _, raw, _ = self.request("/api/config")
+        token = json.loads(raw)["csrf_token"]
+        _, raw, _ = self.request("/api/scans", {"url": "https://example.com/"},
+                                 {"Content-Type": "application/json", "X-CSRF-Token": token})
+        job_id = json.loads(raw)["job_id"]
+        status, raw, _ = self.request(f"/api/scans/{job_id}/intelligence", {}, {"X-CSRF-Token": token})
+        self.assertEqual(status, 409)
+        self.assertIn("unavailable", json.loads(raw)["error"].lower())
 
     def test_host_and_origin_are_rejected(self):
         for headers in ({"Host": "attacker.example"}, {"Origin": "https://attacker.example"}):
@@ -63,7 +73,7 @@ class UIPreviewTests(unittest.TestCase):
         for domain in ("127.0.0.1", "a" * 3000):
             with self.subTest(domain=domain[:20]):
                 status, _, _ = self.request("/api/scans", {"domain": domain}, headers)
-                self.assertEqual(status, 400)
+                self.assertEqual(status, 413 if len(domain) > 2048 else 400)
 
     def test_static_files_and_missing_routes(self):
         status, html, headers = self.request("/")
@@ -92,9 +102,11 @@ class LiveBackendTests(unittest.TestCase):
         async def fake_cf_scan(self, domain, job_id):
             return AdapterResult(source_id="cloudflare", status="completed", raw_report=cf_raw, checks=[], error=None)
         with tempfile.TemporaryDirectory() as tmp, patch.object(Config, "DB_PATH", tmp + "/scan.db"), \
+                patch.dict("os.environ", {"OPENAI_API_KEY": "", "INTELLIGENCE_PROVIDER": "openai"}), \
                 patch("app.adapters.ora.OraAdapter.scan", fake_scan), \
                 patch("app.adapters.cloudflare.CloudflareAdapter.scan", fake_cf_scan), \
-                patch("app.adapters.growth.GrowthAdapter.scan", fake_growth_scan):
+                patch("app.adapters.growth.GrowthAdapter.scan", fake_growth_scan), \
+                patch("app.intelligence.fetch_evidence", side_effect=RuntimeError("test offline")):
             backend = live_backend()
             job_id = backend["create"]("example.com")
             for _ in range(50):
@@ -109,3 +121,10 @@ class LiveBackendTests(unittest.TestCase):
             self.assertEqual(job["report"]["checks"][1]["scoring_source"], "cloudflare")
             self.assertEqual(backend["raw"](job_id, "ora")["layers"][0]["checks"][0]["id"], "sitemap")
             self.assertEqual(backend["list"]()[0]["id"], job_id)
+            # Keep the temporary database alive until the background analysis exits.
+            for _ in range(50):
+                analysis = backend["intelligence"](job_id)
+                if analysis and analysis["status"] == "failed": break
+                time.sleep(0.01)
+            self.assertEqual(analysis["status"], "failed")
+            backend["shutdown"]()
