@@ -172,44 +172,53 @@ class OraAdapter(Adapter):
                 pass
         elif fetch_res.status == 202:
             # Poll if poll_url provided, otherwise poll /score/{domain}
-            body_json = {}
             try:
-                body_json = json.loads(fetch_res.body.decode("utf-8", errors="replace"))
-            except Exception:
-                pass
+                body_json = {}
+                try:
+                    body_json = json.loads(fetch_res.body.decode("utf-8", errors="replace"))
+                except Exception:
+                    pass
 
-            if not isinstance(body_json, dict):
-                raise ValueError("Ora returned an invalid polling response")
-            poll_url = urljoin(scan_url, body_json.get("poll_url") or f"{self.base_url}/score/{domain}")
-            expected_origin, poll = urlsplit(self.base_url), urlsplit(poll_url)
-            if ((poll.scheme, poll.hostname, poll.port) != (expected_origin.scheme, expected_origin.hostname, expected_origin.port)
-                    or poll.username is not None or poll.password is not None):
-                raise ValueError("Ora polling URL must remain on the configured provider origin")
+                if not isinstance(body_json, dict):
+                    raise ValueError("Ora returned an invalid polling response")
+                poll_url = urljoin(scan_url, body_json.get("poll_url") or f"{self.base_url}/score/{domain}")
+                expected_origin, poll = urlsplit(self.base_url), urlsplit(poll_url)
+                if ((poll.scheme, poll.hostname, poll.port) != (expected_origin.scheme, expected_origin.hostname, expected_origin.port)
+                        or poll.username is not None or poll.password is not None):
+                    raise ValueError("Ora polling URL must remain on the configured provider origin")
 
-            # Polling loop
-            while True:
-                await asyncio.sleep(min(2, remaining_timeout()))
-                allowance = remaining_timeout()
-                await asyncio.wait_for(self.rate_limiter.acquire(), timeout=allowance)
-                poll_res = await loop.run_in_executor(
-                    None,
-                    lambda: safe_fetch(
-                        poll_url,
-                        method="GET",
-                        headers=headers,
-                        timeout=remaining_timeout(),
-                    ),
-                )
-                if poll_res.status == 200:
-                    raw_report_str = poll_res.body.decode("utf-8", errors="replace")
-                    try:
-                        data = json.loads(raw_report_str)
-                        if isinstance(data, dict) and data.get("status") not in ("pending", "running"):
+                # Polling loop
+                while True:
+                    await asyncio.sleep(min(2, remaining_timeout()))
+                    allowance = remaining_timeout()
+                    await asyncio.wait_for(self.rate_limiter.acquire(), timeout=allowance)
+                    poll_res = await loop.run_in_executor(
+                        None,
+                        lambda: safe_fetch(
+                            poll_url,
+                            method="GET",
+                            headers=headers,
+                            timeout=remaining_timeout(),
+                        ),
+                    )
+                    if poll_res.status == 200:
+                        raw_report_str = poll_res.body.decode("utf-8", errors="replace")
+                        try:
+                            data = json.loads(raw_report_str)
+                            if isinstance(data, dict) and data.get("status") not in ("pending", "running"):
+                                break
+                        except json.JSONDecodeError:
                             break
-                    except json.JSONDecodeError:
-                        break
-            if not data or data.get("status") in ("pending", "running"):
-                raise TimeoutError("Ora scan polling timed out")
+                if not data or data.get("status") in ("pending", "running"):
+                    raise TimeoutError("Ora scan polling timed out")
+            except (ValueError, TimeoutError) as e:
+                return AdapterResult(
+                    source_id=self.source_id,
+                    status="timeout" if isinstance(e, TimeoutError) else "failed",
+                    raw_report=None,
+                    checks=[],
+                    error=f"Ora polling error: {e}",
+                )
         else:
             return AdapterResult(
                 source_id=self.source_id,
