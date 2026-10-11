@@ -80,36 +80,38 @@
     <div id="report-view" class="report-view" hidden>
       <div class="report-nav"><button id="new-analysis" class="text-button">← New scan</button></div>
       <section id="results" hidden>
-        <div class="report-identity"><span class="report-site-icon" aria-hidden="true">◎</span><div><h2 id="report-domain" tabindex="-1"></h2><p id="report-time"></p></div><span class="report-version"><span class="mode-normal">MARKETING PLAYBOOK</span><span class="mode-agent">AGENT READINESS</span></span></div>
+        <div class="topline"><div class="domain"><div class="breadcrumbs"><span class="mode-normal">SCAN REPORT / MARKETING PLAYBOOK</span><span class="mode-agent">SCAN REPORT / AGENT READINESS</span></div><h2 id="report-domain" tabindex="-1"></h2><p id="report-time"></p></div><div class="actions"><button id="copy-summary" class="btn" type="button">Copy summary ↗</button><button id="new-analysis-top" class="btn dark" type="button">← New scan</button></div></div>
         <div id="marketing-report" class="mode-normal">
-          <section class="report-hero" aria-label="Marketing summary">
-            <div class="report-score"><div class="eyebrow">MARKETING PLAYBOOK SCORE</div><div class="score-number"><strong id="mk-score-total">—</strong><span>/100</span></div><p id="mk-score-coverage" class="score-coverage"></p></div>
-            <div class="report-assessment"><span class="assessment-label">OVERVIEW</span><h3 id="mk-headline"></h3><p id="mk-summary"></p><div id="mk-counts" class="report-counts"></div></div>
-          </section>
-          <div id="mk-layers" class="report-layer-strip" aria-label="Marketing layer scores"></div>
+          <nav class="sectionnav" aria-label="Report sections"><a href="#mk-readiness">Playbook score</a><a href="#mk-actions">Next steps</a><a href="#mk-checks">Playbook checks</a><a href="#intelligence">Product intelligence</a></nav>
+          <div id="mk-readiness" class="hero">
+            <div class="score-card"><div class="eyebrow">MARKETING PLAYBOOK SCORE</div><div class="score-line"><span class="score" id="mk-score-total">—</span><span class="denom">/ 100</span></div><p id="mk-score-coverage" class="coverage"></p></div>
+            <div class="overview card"><div><div class="eyebrow">OVERVIEW</div><h3 id="mk-headline"></h3><p id="mk-summary"></p></div><div id="mk-counts" class="statrow"></div></div>
+          </div>
+          <div id="mk-layers" class="breakdown" aria-label="Marketing layer scores"></div>
           <div class="report-body">
-            <section class="action-section" aria-labelledby="mk-actions-title"><div class="section-heading"><div><span class="section-index">01 / NEXT STEPS</span><h2 id="mk-actions-title">What should you do next?</h2></div><span id="mk-action-count" class="section-aside"></span></div><p class="section-description">Recommendations identified during this assessment, when evidence is available.</p><div id="mk-action-list" class="action-list"></div></section>
-            <section aria-labelledby="mk-findings-title"><div class="section-heading"><div><span class="section-index">02 / PLAYBOOK CHECKS</span><h2 id="mk-findings-title">Marketing fundamentals</h2></div><span class="section-aside">Open a check to understand what we evaluate and why it matters</span></div><p class="section-description">Explore each check to understand what Pickable evaluates, why it matters, and how the result can help improve your marketing presence.</p><div id="mk-findings"></div></section>
+            <section id="mk-actions" class="section" aria-labelledby="mk-actions-title"><div class="sectionhead"><div><span class="section-index">01 / NEXT STEPS</span><h2 id="mk-actions-title">What should you do next?</h2></div><span id="mk-action-count" class="sectiontag"></span></div><p class="section-description">Recommendations identified during this assessment, when evidence is available.</p><div id="mk-action-list" class="action-list"></div></section>
+            <section id="mk-checks" class="section" aria-labelledby="mk-findings-title"><div class="sectionhead"><div><span class="section-index">02 / PLAYBOOK CHECKS</span><h2 id="mk-findings-title">Marketing fundamentals</h2></div><span class="sectiontag">Open a check to understand what we evaluate</span></div><p class="section-description">Explore each check to understand what Pickable evaluates, why it matters, and how the result can help improve your marketing presence.</p><div id="mk-findings" class="check-layout"></div></section>
           </div>
         </div>
         <div id="agent-report" class="mode-agent">
-        <section class="action-section top-action-section" aria-labelledby="actions-title"><div class="section-heading"><div><span class="section-index">NEXT STEPS</span><h2 id="actions-title">Recommended improvements</h2></div><span id="action-count" class="section-aside"></span></div><p class="section-description">Practical changes based on this scan. Start with the ones that matter to your product.</p><div id="action-list" class="action-list"></div></section>
-        <section class="report-hero" aria-label="Scan summary">
-          <div class="report-score"><div class="eyebrow">PICKABLE PRELIMINARY SCORE</div><div class="score-number"><strong id="score-total">—</strong><span>/100</span></div><p id="score-coverage" class="score-coverage"></p></div>
-          <div class="report-assessment"><span class="assessment-label">OVERVIEW</span><h3 id="report-headline"></h3><p id="report-summary"></p><div id="report-counts" class="report-counts"></div></div>
-        </section>
-        <div id="layers" class="report-layer-strip" aria-label="Layer scores"></div>
-        <section class="report-body" aria-labelledby="checks-title">
-          <div class="section-heading"><div><span class="section-index">SCORE DETAILS</span><h2 id="checks-title">Checks behind this score</h2></div><span class="section-aside">Open a check to see what it means</span></div>
-          <div id="check-findings"></div>
+        <nav class="sectionnav" aria-label="Report sections"><a href="#ag-readiness">Agent readiness</a><a href="#ag-actions">Next steps</a><a href="#ag-checks">Detailed checks</a><a href="#intelligence">Product intelligence</a></nav>
+        <div id="ag-readiness" class="hero">
+          <div class="score-card"><div class="eyebrow">PICKABLE PRELIMINARY SCORE</div><div class="score-line"><span class="score" id="score-total">—</span><span class="denom">/ 100</span></div><p id="score-coverage" class="coverage"></p></div>
+          <div class="overview card"><div><div class="eyebrow">OVERVIEW</div><h3 id="report-headline"></h3><p id="report-summary"></p></div><div id="report-counts" class="statrow"></div></div>
+        </div>
+        <div id="layers" class="breakdown" aria-label="Layer scores"></div>
+        <section id="ag-actions" class="section" aria-labelledby="actions-title"><div class="sectionhead"><div><span class="section-index">01 / NEXT STEPS</span><h2 id="actions-title">What should you improve first?</h2></div><span id="action-count" class="sectiontag"></span></div><div class="two-col"><div id="action-list" class="action-list"></div><aside class="card callout"><div class="eyebrow">CONDITIONAL INTEGRATION CHECKS</div><h3>Only fix these if the capability exists</h3><p>These checks should not automatically be treated as universal requirements.</p><div class="conditional-list"><div><strong>OAuth metadata</strong><p>Relevant when protected authorization flows exist.</p></div><div><strong>Protected Resource metadata</strong><p>Relevant when protected resources and authorization servers are exposed.</p></div><div><strong>MCP server card</strong><p>Relevant when an MCP service is actually offered.</p></div></div></aside></div></section>
+        <section id="ag-checks" class="section" aria-labelledby="checks-title">
+          <div class="sectionhead"><div><span class="section-index">02 / DETAILED DIAGNOSTICS</span><h2 id="checks-title">Checks behind this score</h2></div><span class="sectiontag">Open a check to see what it means</span></div>
+          <div id="check-findings" class="check-layout"></div>
         </section>
         </div>
-        <section id="intelligence-panel" class="intelligence-panel" aria-labelledby="intelligence-title" hidden>
-          <div class="section-heading"><div><span class="section-index">PRODUCT INTELLIGENCE</span><h2 id="intelligence-title">What this product does</h2></div><span id="intelligence-status" class="section-aside"></span></div>
+        <section id="intelligence" class="section intelligence-section" aria-labelledby="intelligence-title">
+          <div id="intelligence-panel" class="intelligence-panel"><div class="sectionhead"><div><span class="section-index">PRODUCT INTELLIGENCE</span><h2 id="intelligence-title">What this product does</h2></div><span id="intelligence-status" class="sectiontag"></span></div>
           <p id="intelligence-summary" class="intelligence-summary"></p>
           <div id="intelligence-details" class="intelligence-details"></div>
           <div id="intelligence-sources" class="intelligence-sources"></div>
-          <button id="deep-analysis" class="text-button" type="button">Research deeper ↗</button>
+          <button id="deep-analysis" class="text-button" type="button">Research deeper ↗</button></div>
         </section>
       </section>
     </div>

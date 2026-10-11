@@ -182,6 +182,7 @@ function renderScore(score, prefix) {
     fill.style.width = `${pending || layer.points === null ? 0 : Math.min(100, Math.max(0, layer.points / layer.max_points * 100))}%`; track.append(fill);
     row.append(element("span", "", layer.label), track, element("span", "layer-value", pending ? "Calculating" : layer.points === null ? "Not measured" : `${layer.points}/${layer.max_points}`));
     row.title = `${layer.measured}/${layer.defined} checks measured`; $(prefix + "layers").append(row);
+    if (!pending) row.append(element("span", "layer-sub", `${scalar(layer.measured, "0")}/${scalar(layer.defined, "0")} checks measured`));
   }
 }
 
@@ -350,6 +351,16 @@ function renderReport(report) {
   $("empty-state").hidden = true; $("results").hidden = false;
   $("report-domain").textContent = report.domain;
   $("report-time").textContent = `${formatTime(report.scanned_at)}${state.config?.mode === "demo" ? " · TEST DATA" : ""}`;
+  const model = modelReport(report);
+  const total = report.score?.total ?? "—";
+  const copy = $("copy-summary");
+  if (copy) {
+    copy.onclick = () => {
+      const text = `${report.domain} readiness: ${total}/100; ${model.passed} passed, ${model.failed} missing across ${model.passed + model.failed + model.uncertain} evaluated checks.`;
+      if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => { copy.textContent = "✓ Copied"; }).catch(() => { copy.textContent = "Copy unavailable"; });
+    };
+    if (copy.textContent !== "Copy summary ↗") copy.textContent = "Copy summary ↗";
+  }
   renderScore(report.score, "");
   renderReportExperience(report);
   renderReadinessFindings(report);
@@ -500,6 +511,7 @@ $("scan-form").addEventListener("submit", async (event) => {
 });
 $("refresh-history").addEventListener("click", refreshHistory);
 $("new-analysis").addEventListener("click", returnToLanding);
+$("new-analysis-top").addEventListener("click", returnToLanding);
 $("deep-analysis").addEventListener("click", requestDeepAnalysis);
 $("cancel-analysis").addEventListener("click", returnToLanding);
 $("open-history").addEventListener("click", () => { refreshHistory(); $("history-dialog").showModal(); });
