@@ -735,7 +735,8 @@ def serve_agent_post(handler, backend, raw_path, policy, create_scan):
                 )
                 return True
 
-    response = mcp_dispatch(body, backend, handler.client_address[0], policy, create_scan, protocol_version)
+    peer = getattr(handler, "client_ip", handler.client_address[0])
+    response = mcp_dispatch(body, backend, peer, policy, create_scan, protocol_version)
     if response is None:
         _send_accepted_notification(handler)
     else:

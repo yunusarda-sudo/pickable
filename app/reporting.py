@@ -29,6 +29,17 @@ MARKETING_DEFINITIONS = [
 ]
 NORMALIZED = {"pass": "PASS", "fail": "FAIL", "warn": "WARNING", "warning": "WARNING", "na": "NOT_APPLICABLE", "skip": "NOT_APPLICABLE", "not_applicable": "NOT_APPLICABLE"}
 NO_EVIDENCE = "No definitive PASS/FAIL evidence. Warnings, N/A and access errors are excluded from the score."
+# Pickable-authored fallback guidance for FAIL checks the provider gave no
+# recommendation for. Never attributed to a provider; items carry source "pickable".
+PICKABLE_GUIDANCE = {
+    "discovery.sitemap": "Publish a valid XML sitemap and reference it in robots.txt.",
+    "discovery.link_headers": "Advertise your machine entry points with the right HTTP Link relations.",
+    "content.llms_txt": "Add a root /llms.txt with an H1 title and links to useful content.",
+    "content.markdown": "Check Markdown responses, content type and Accept/Vary behavior together.",
+    "auth.oauth_metadata": "If you offer a protected API, publish root OAuth/OIDC discovery metadata. Not needed for public-only content.",
+    "auth.protected_resource": "If you have protected resources, declare the resource id and authorization servers in metadata.",
+    "integration.mcp_card": "If you run an MCP server, publish its discovery card with the advertised endpoints.",
+}
 
 
 def text_value(value):
@@ -212,6 +223,22 @@ def build_report(domain, sources, pending=()):
     recommendations = (envelopes["ora"].get("raw") or {}).get("topFixes")
     if not isinstance(recommendations, list):
         recommendations = []
+    covered = set()
+    for item in recommendations:
+        if isinstance(item, dict) and isinstance(item.get("recommendation"), str):
+            if isinstance(item.get("check_id"), str):
+                covered.add(item["check_id"])
+            for cid, _, _, ora_id, _, _ in DEFINITIONS:
+                if ora_id and item.get("id") == ora_id:
+                    covered.add(cid)
+    for check in checks:
+        if check["scoring_status"] == "FAIL" and check["check_id"] not in covered:
+            guidance = PICKABLE_GUIDANCE.get(check["check_id"])
+            if guidance:
+                recommendations = [*recommendations, {"id": "", "source": "pickable",
+                                                      "check_id": check["check_id"],
+                                                      "recommendation": guidance}]
+                covered.add(check["check_id"])
     return {"schema_version": "0.1", "mapping_version": "2026-10-11.1", "domain": domain, "scanned_at": now(),
             "sources": summaries, "checks": checks, "score": {**score_checks(checks), "final": not any(c["scoring_status"] == "PENDING" for c in checks)},
             "source_specific": specific, "recommendations": recommendations,

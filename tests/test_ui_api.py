@@ -82,6 +82,81 @@ class UIPreviewTests(unittest.TestCase):
         self.assertIn("frame-ancestors 'none'", headers["Content-Security-Policy"])
         self.assertEqual(self.request("/unknown")[0], 404)
 
+    def test_security_headers_present_and_stack_not_advertised(self):
+        status, _, headers = self.request("/")
+        self.assertEqual(status, 200)
+        self.assertNotIn("Pickable", headers.get("Server", ""))
+        self.assertIn("max-age=31536000", headers.get("Strict-Transport-Security", ""))
+        self.assertEqual(headers.get("Referrer-Policy"), "strict-origin-when-cross-origin")
+        self.assertIn("camera=()", headers.get("Permissions-Policy", ""))
+        self.assertEqual(headers.get("X-Frame-Options"), "DENY")
+
+
+class OriginHardeningTests(unittest.TestCase):
+    def _serve(self, env):
+        import os
+        from unittest.mock import patch
+        with patch.dict(os.environ, env):
+            server = make_server(0, demo_backend())
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        return server, thread, f"http://127.0.0.1:{server.server_port}"
+
+    def _get(self, base, path, headers=None):
+        request = urllib.request.Request(base + path, headers=headers or {})
+        try:
+            with urllib.request.urlopen(request, timeout=3) as response:
+                return response.status, response.read(), response.headers
+        except urllib.error.HTTPError as error:
+            with error:
+                return error.code, error.read(), error.headers
+
+    def test_require_cf_blocks_direct_but_allows_edge_and_health(self):
+        import os
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from server import _parse_trusted_proxies, make_server
+        trusted = _parse_trusted_proxies("")
+
+        def edge(path, peer, headers):
+            handler = SimpleNamespace(client_address=(peer, 1234), headers=headers or {})
+            with patch.dict(os.environ, {"PICKABLE_REQUIRE_CF": "1"}):
+                server = make_server(0, demo_backend())
+            try:
+                return server.RequestHandlerClass._edge_allowed(handler, path)
+            finally:
+                server.server_close()
+
+        # Direct internet client, no edge headers -> blocked (origin IP leak alone is useless).
+        self.assertFalse(edge("/", "198.51.100.9", {}))
+        # Proxy peer without edge headers (direct-to-Traefik) -> blocked.
+        self.assertFalse(edge("/", "172.18.0.3", {"X-Forwarded-For": "198.51.100.9"}))
+        # Real Cloudflare-routed request through the proxy -> allowed.
+        self.assertTrue(edge("/", "172.18.0.3", {"CF-Ray": "abc-FRA", "CF-Connecting-IP": "203.0.113.7"}))
+        # Loopback (VPS-side curl) and health probes stay open.
+        self.assertTrue(edge("/", "127.0.0.1", {}))
+        self.assertTrue(edge("/api/health", "198.51.100.9", {}))
+
+        server, thread, base = self._serve({"PICKABLE_REQUIRE_CF": "1"})
+        try:
+            status, _, _ = self._get(base, "/api/health")
+            self.assertEqual(status, 200)
+            status, _, _ = self._get(base, "/", {"CF-Ray": "abc123-FRA", "CF-Connecting-IP": "203.0.113.7"})
+            self.assertEqual(status, 200)
+        finally:
+            server.shutdown(); server.server_close(); thread.join()
+
+    def test_forwarding_headers_trusted_only_behind_proxy(self):
+        from types import SimpleNamespace
+        from server import _parse_trusted_proxies, _real_client_ip
+        trusted = _parse_trusted_proxies("")
+        via_proxy = SimpleNamespace(client_address=("172.18.0.3", 1234),
+                                    headers={"CF-Connecting-IP": "203.0.113.7", "X-Forwarded-For": "203.0.113.9"})
+        self.assertEqual(_real_client_ip(via_proxy, trusted), "203.0.113.7")
+        direct = SimpleNamespace(client_address=("198.51.100.9", 1234),
+                                 headers={"CF-Connecting-IP": "203.0.113.7", "X-Forwarded-For": "203.0.113.9"})
+        self.assertEqual(_real_client_ip(direct, trusted), "198.51.100.9")
+
 
 if __name__ == "__main__": unittest.main()
 

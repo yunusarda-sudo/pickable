@@ -147,6 +147,34 @@ class TestStorage(unittest.TestCase):
         self.assertEqual(statuses["check_unknown"], "UNKNOWN")
         self.assertEqual(statuses["check_na"], "NA")
 
+    def test_concurrency_pragmas_configured(self):
+        """Paylasilan baglanti WAL + busy_timeout ile acilmali (kilitlenme yerine bekler)"""
+        mode = self.storage.conn.execute("PRAGMA journal_mode;").fetchone()[0]
+        self.assertEqual(mode.lower(), "wal")
+        timeout = self.storage.conn.execute("PRAGMA busy_timeout;").fetchone()[0]
+        self.assertGreaterEqual(timeout, 5000)
+
+    def test_close_is_idempotent_and_guards_late_writes(self):
+        """close() iki kez cagrilabilir; kapanis sonrasi yazma anlasilir hatayla reddedilir"""
+        self.storage.close()
+        self.storage.close()
+        with self.assertRaises(RuntimeError):
+            self.storage.has_inflight_intelligence("example.com", "short")
+
+    def test_parallel_writes_preserve_all_jobs(self):
+        """8 yazar thread 80 job yazdiginda kayip/yinelenme olmamali (readonly/disk I/O regresyonu)"""
+        from concurrent.futures import ThreadPoolExecutor
+
+        def write(i):
+            job_id = self.storage.create_job(f"load{i}.test")
+            self.storage.update_job_status(job_id, "completed")
+            return job_id
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            ids = list(pool.map(write, range(80)))
+        self.assertEqual(len(set(ids)), 80)
+        self.assertTrue(all(self.storage.get_job(job_id)["status"] == "completed" for job_id in ids))
+
 
 if __name__ == "__main__":
     unittest.main()

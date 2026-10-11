@@ -167,11 +167,26 @@ class IntelligenceContractTests(unittest.TestCase):
         self.assertIn("SaaS Site Intelligence", text)
         self.assertIn("actor → input", text)
 
-    def test_without_hosted_key_defaults_to_local_ollama(self):
+    def test_without_provider_or_key_analysis_is_unavailable_not_local(self):
+        # Ollama is strictly opt-in: with no INTELLIGENCE_PROVIDER and no hosted
+        # key, the provider must report unavailable instead of assuming a local
+        # Ollama instance exists (it won't on Render/VPS or a closed laptop).
         from app.intelligence import IntelligenceProvider
         with patch.dict("os.environ", {"OPENAI_API_KEY": "", "INTELLIGENCE_PROVIDER": ""}, clear=False):
             provider = IntelligenceProvider()
+        self.assertEqual(provider.provider, "unavailable")
+        self.assertFalse(provider.available)
+        self.assertIsNone(provider.model)
+        self.assertIn("not configured", provider.unavailable_reason)
+        with self.assertRaises(RuntimeError):
+            provider.analyze({"visible_text": "randevu"}, "short")
+
+    def test_explicit_ollama_opt_in_still_works(self):
+        from app.intelligence import IntelligenceProvider
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "", "INTELLIGENCE_PROVIDER": "ollama"}, clear=False):
+            provider = IntelligenceProvider()
         self.assertEqual(provider.provider, "ollama")
+        self.assertTrue(provider.available)
         self.assertEqual(provider.model, "qwen3:8b")
         self.assertEqual(provider.ollama_base_url, "http://127.0.0.1:11434")
 

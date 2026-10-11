@@ -39,6 +39,8 @@ class AgentPolicy:
     mcp_scan_enabled: bool = False
     scans_per_hour: int = 5
     global_scans_per_hour: int = 30
+    intel_reuse_hours: int = 24
+    deep_per_day: int = 50
 
     @classmethod
     def from_env(cls, env=None):
@@ -59,7 +61,9 @@ class AgentPolicy:
             raise ValueError("PICKABLE_AGENT_API_KEY must contain at least 32 ASCII characters without whitespace.")
         return cls(public_url, key, env.get("PICKABLE_MCP_SCAN_ENABLED", "0") == "1" and bool(key),
                    _integer(env, "PICKABLE_SCANS_PER_HOUR", 5, 1, 60),
-                   _integer(env, "PICKABLE_GLOBAL_SCANS_PER_HOUR", 30, 1, 600))
+                   _integer(env, "PICKABLE_GLOBAL_SCANS_PER_HOUR", 30, 1, 600),
+                   _integer(env, "PICKABLE_INTEL_REUSE_HOURS", 24, 0, 168),
+                   _integer(env, "PICKABLE_DEEP_PER_DAY", 50, 1, 1000))
 
     def agent_authorized(self, authorization):
         if not self.agent_api_key or not isinstance(authorization, str):
@@ -71,8 +75,10 @@ class AgentPolicy:
 class ScanLimiter:
     """Atomic per-peer and global limits, with a bounded peer table.
 
-    Forwarding headers are deliberately not trusted. Behind a reverse proxy the
-    per-peer budget may be shared; the global budget always protects the worker.
+    The peer IP is resolved by the server: forwarding headers (CF-Connecting-IP,
+    X-Forwarded-For) are honored only when the direct TCP peer is a trusted
+    proxy (see TRUSTED_PROXIES). Direct clients cannot spoof another peer's
+    budget. The global budget always protects the worker.
     Limits reset on restart and are intended for this single-process deployment.
     """
     def __init__(self, policy, clock=time.monotonic, max_clients=1024):

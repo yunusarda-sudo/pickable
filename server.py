@@ -2,8 +2,9 @@
 import argparse
 import asyncio
 from collections import OrderedDict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -77,8 +78,11 @@ def public_report(report):
             check = next((row for row in report.get("checks", []) if isinstance(row, dict) and any(
                 isinstance(obs, dict) and obs.get("source_check_id") == source_id
                 for obs in (row.get("sources") or {}).values())), None)
-            recommendations.append({"id": source_id, "recommendation": item["recommendation"][:3000],
-                                    "check_id": check.get("check_id") if check else None})
+            entry = {"id": source_id, "recommendation": item["recommendation"][:3000],
+                     "check_id": check.get("check_id") if check else item.get("check_id")}
+            if item.get("source") == "pickable":
+                entry["source"] = "pickable"
+            recommendations.append(entry)
     marketing = report.get("marketing")
     if isinstance(marketing, dict):
         source = marketing.get("source")
@@ -177,13 +181,15 @@ def demo_backend():
                 for job in reversed(list(jobs.values())) if owner_ip is None or job.get("owner_ip") == owner_ip]}
 
 
-def live_backend():
+def live_backend(policy=None):
     from app.adapters.cloudflare import CloudflareAdapter
     from app.adapters.growth import GrowthAdapter
     from app.adapters.ora import OraAdapter
+    from app.agent_policy import AgentPolicy
     from app.config import Config
     from app.orchestrator import Orchestrator
     from app.storage import Storage
+    policy = policy or AgentPolicy.from_env()
     storage = Storage(Config.DB_PATH)
     orchestrator = Orchestrator(adapters=[OraAdapter(), CloudflareAdapter(), GrowthAdapter()], storage=storage)
     pending = queue.Queue(maxsize=MAX_QUEUED)
@@ -192,6 +198,14 @@ def live_backend():
     stop_workers = threading.Event()
     shutdown_lock = threading.Lock()
     storage_closed = False
+    # Spend guard: in-flight (domain, depth) analyses. A repeat visitor for a
+    # site that is already being analyzed never triggers a second model call:
+    # readers simply retry on the next poll and then hit the reuse path above.
+    # Best-effort by design; a missed join only ever costs one extra call,
+    # never correctness. Nothing here blocks an HTTP handler: read paths and
+    # the scan worker return immediately and let the UI poll again.
+    flight_lock = threading.Lock()
+    flight = set()
     from app.intelligence import IntelligenceProvider, evidence_pages, fetch_evidence
 
     provider = IntelligenceProvider()
@@ -200,15 +214,79 @@ def live_backend():
         model_for = getattr(provider, "model_for", None)
         return model_for(depth) if callable(model_for) else provider.model
 
+    def _reuse_cutoff():
+        if not policy.intel_reuse_hours:
+            return None
+        return (datetime.now(timezone.utc) - timedelta(hours=policy.intel_reuse_hours)).isoformat()
+
+    def _try_reuse(scan_id, domain, depth):
+        """Copy a recent completed same-domain analysis; no model call. Returns job_id or None."""
+        cutoff = _reuse_cutoff()
+        if cutoff is None:
+            return None
+        hit = storage.find_completed_intelligence(domain, depth, cutoff)
+        if not isinstance(hit, dict):
+            return None
+        job_id, _ = storage.create_intelligence_job(scan_id, depth, intelligence_model(depth))
+        storage.update_intelligence_job(job_id, "completed", report=hit)
+        return job_id
+
     def queue_intelligence(scan_id, depth="short", request_ip=None):
         scan = storage.get_job(scan_id)
         if not scan: return None
         if request_ip and scan.get("owner_ip") != request_ip: return None
         if scan["status"] != "completed": raise ValueError("The site scan must finish before product analysis starts.")
+        domain = scan["domain"]
+        existing = storage.get_intelligence_job(scan_id, depth)
+        if existing and existing["status"] in ("queued", "running"):
+            return existing["id"]
+        reused = _try_reuse(scan_id, domain, depth)
+        if reused: return reused
+        key = (domain, depth)
+        with flight_lock:
+            in_flight = key in flight
+        if not in_flight:
+            # Cross-process guard: another worker process may hold the
+            # in-flight analysis in the shared SQLite file.
+            try:
+                in_flight = storage.has_inflight_intelligence(domain, depth)
+            except Exception:
+                pass
+        if in_flight:
+            if depth == "deep":
+                raise OverflowError("Deep analysis for this site is already running; please try again shortly.")
+            # Short analyses are retried by the next UI poll, which then hits reuse.
+            return None
+        if depth == "deep":
+            today = datetime.now(timezone.utc).date().isoformat()
+            claimed = storage.try_claim_deep_budget(scan_id, intelligence_model(depth), today, policy.deep_per_day)
+            if claimed is None:
+                raise ValueError("Today's deep-research budget is used up. The short analysis above remains available; try deep again tomorrow.")
+            with flight_lock:
+                flight.add(key)
+            try: intelligence_pending.put_nowait((claimed, scan_id, depth))
+            except queue.Full:
+                with flight_lock: flight.discard(key)
+                storage.update_intelligence_job(claimed, "unavailable", error="Intelligence queue is full.")
+                raise OverflowError("Deep analysis queue is full; try again shortly.")
+            return claimed
+        if not getattr(provider, "available", True):
+            # No analysis backend configured (e.g. no Ollama/OpenAI): record that
+            # plainly instead of queueing work that can never succeed. Cached
+            # reuse above still applies, so previously completed analyses stay visible.
+            job_id, _ = storage.create_intelligence_job(scan_id, depth, intelligence_model(depth))
+            storage.update_intelligence_job(job_id, "unavailable",
+                                            error=getattr(provider, "unavailable_reason", None)
+                                            or "Product analysis is not configured on this server.")
+            if depth == "deep": raise RuntimeError("Product analysis is not configured on this server.")
+            return job_id
         job_id, created = storage.create_intelligence_job(scan_id, depth, intelligence_model(depth))
         if created:
+            with flight_lock:
+                flight.add(key)
             try: intelligence_pending.put_nowait((job_id, scan_id, depth))
             except queue.Full:
+                with flight_lock: flight.discard(key)
                 storage.update_intelligence_job(job_id, "unavailable", error="Intelligence queue is full.")
                 if depth == "deep": raise OverflowError("Deep analysis queue is full; try again shortly.")
         return job_id
@@ -221,8 +299,11 @@ def live_backend():
                 continue
             evidence = None
             preliminary = None
+            flight_key = None
             try:
                 scan = storage.get_job(scan_id)
+                if scan:
+                    flight_key = (scan.get("domain"), depth)
                 storage.update_intelligence_job(analysis_id, "running")
                 from app.intelligence import quick_analysis
                 def publish_homepage_summary(homepage):
@@ -260,6 +341,9 @@ def live_backend():
                                                 finish_reason=finish if isinstance(finish, str) else None)
             finally:
                 intelligence_pending.task_done()
+                if flight_key is not None:
+                    with flight_lock:
+                        flight.discard(flight_key)
 
     intelligence_thread = threading.Thread(target=intelligence_worker, daemon=True, name="pickable-intelligence-worker")
     intelligence_thread.start()
@@ -268,7 +352,10 @@ def live_backend():
         # ponytail: one scan at a time on one event loop (keeps Ora's rate limiter shared); add workers if queue waits get long
         loop = asyncio.new_event_loop()
         while not stop_workers.is_set():
-            job_id, domain = pending.get()
+            try:
+                job_id, domain = pending.get(timeout=0.1)
+            except queue.Empty:
+                continue
             try:
                 if job_id is None:
                     continue
@@ -296,12 +383,19 @@ def live_backend():
             if storage_closed:
                 return
         stop_workers.set()
-        # Wake a scan worker blocked in Queue.get(). A queued item is left intact; shutdown
-        # is an explicit lifecycle boundary, and no worker may touch storage after it.
-        try:
-            pending.put_nowait((None, None))
-        except queue.Full:
-            pass
+        with flight_lock:
+            flight.clear()
+        # Workers poll with timeout (scan) or 0.1s (intelligence), so they
+        # always observe stop_workers even if the sentinel is lost because the
+        # queue was full. The sentinel only wakes an idle worker faster.
+        # No worker may touch storage after this point: callers must stop
+        # issuing create/get/deep calls before shutdown, and the DB file must
+        # not be deleted until shutdown returns.
+        for _ in range(2):
+            try:
+                pending.put_nowait((None, None))
+            except queue.Full:
+                break
         scan_thread.join(timeout=10)
         intelligence_thread.join(timeout=10)
         alive = [thread.name for thread in (scan_thread, intelligence_thread) if thread.is_alive()]
@@ -311,6 +405,7 @@ def live_backend():
             if not storage_closed:
                 with storage._lock:
                     storage.conn.close()
+                    storage._closed = True
                 storage_closed = True
 
     def create(domain, target_url=None, owner_ip=None):
@@ -395,11 +490,74 @@ def live_backend():
             "intelligence": get_intelligence, "deep": start_deep}
 
 
+DEFAULT_TRUSTED_PROXY_CIDRS = ("127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+
+
+def _parse_trusted_proxies(raw):
+    """Parse TRUSTED_PROXIES env (comma/space separated IPs or CIDRs)."""
+    networks = []
+    for part in (raw or "").replace(",", " ").split():
+        try:
+            networks.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            continue
+    if not networks:
+        networks = [ipaddress.ip_network(c) for c in DEFAULT_TRUSTED_PROXY_CIDRS]
+    return tuple(networks)
+
+
+def _peer_is_trusted(peer_ip, trusted):
+    try:
+        addr = ipaddress.ip_address(peer_ip)
+    except ValueError:
+        return False
+    return any(addr in net for net in trusted)
+
+
+def _real_client_ip(handler, trusted):
+    """Resolve the client IP behind Traefik/Cloudflare.
+
+    Forwarding headers are honored ONLY when the direct TCP peer is a trusted
+    proxy (docker/loopback by default). Direct internet clients cannot spoof.
+    Prefers CF-Connecting-IP (Cloudflare-canonical), then X-Forwarded-For.
+    """
+    peer = handler.client_address[0]
+    if not _peer_is_trusted(peer, trusted):
+        return peer
+    cf_ip = (handler.headers.get("CF-Connecting-IP") or "").strip()
+    if cf_ip:
+        try:
+            ipaddress.ip_address(cf_ip)
+            return cf_ip
+        except ValueError:
+            pass
+    xff = handler.headers.get("X-Forwarded-For") or ""
+    first = xff.split(",")[0].strip()
+    if first:
+        try:
+            ipaddress.ip_address(first)
+            return first
+        except ValueError:
+            pass
+    return peer
+
+
+def _came_via_cloudflare(handler):
+    """True when Cloudflare edge headers are present (Ray/Connecting-IP/Visitor)."""
+    return bool(handler.headers.get("CF-Ray") or handler.headers.get("CF-Connecting-IP")
+                or handler.headers.get("CF-Visitor") or handler.headers.get("CF-IPCountry"))
+
+
 def make_server(port, backend, bind="127.0.0.1", allowed_hosts=(), policy=None):
     token = secrets.token_urlsafe(32)
     policy = policy or AgentPolicy.from_env()
     limiter = ScanLimiter(policy)
-    deep_limiter = ScanLimiter(AgentPolicy(scans_per_hour=3, global_scans_per_hour=30))
+    deep_limiter = ScanLimiter(AgentPolicy(scans_per_hour=10, global_scans_per_hour=30))
+    trusted_proxies = _parse_trusted_proxies(os.environ.get("TRUSTED_PROXIES", ""))
+    # When "1": drop direct-to-origin requests that bypassed the CDN edge.
+    # Health checks stay open so the orchestrator/loadbalancer can probe.
+    # Loopback is always allowed (local dev, VPS-side curl).
+    require_cf = os.environ.get("PICKABLE_REQUIRE_CF", "0") == "1"
 
     def create_scan(domain, remote_addr, target_url=None):
         domain = normalize_domain(domain)
@@ -413,8 +571,33 @@ def make_server(port, backend, bind="127.0.0.1", allowed_hosts=(), policy=None):
                 "list": lambda: backend["list"](remote_addr)}
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "Pickable/1.0"
+        # Generic banner: do not advertise the stack to scanners.
+        server_version = "nginx"
         sys_version = ""
+
+        @property
+        def client_ip(self):
+            return _real_client_ip(self, trusted_proxies)
+
+        def _edge_allowed(self, path):
+            """Origin lockdown: when REQUIRE_CF=1, only CDN-routed traffic passes.
+
+            Exempts /api/health (orchestrator probes) and loopback callers.
+            Everything else without Cloudflare edge headers gets 403, so a
+            leaked origin IP alone is not enough to reach the app.
+            """
+            if not require_cf:
+                return True
+            if path == "/api/health":
+                return True
+            if _peer_is_trusted(self.client_address[0], trusted_proxies) and _came_via_cloudflare(self):
+                return True
+            try:
+                if ipaddress.ip_address(self.client_address[0]).is_loopback:
+                    return True
+            except ValueError:
+                pass
+            return False
 
         def setup(self):
             self.request.settimeout(REQUEST_TIMEOUT)
@@ -433,6 +616,11 @@ def make_server(port, backend, bind="127.0.0.1", allowed_hosts=(), policy=None):
             self.send_header("Link", '</sitemap.xml>; rel="sitemap", </openapi.json>; rel="service-desc"; type="application/json", </.well-known/api-catalog>; rel="api-catalog", </llms.txt>; rel="alternate"; type="text/plain", </docs>; rel="help"')
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+            # Honored only on HTTPS; harmless on plain-HTTP behind the edge TLS terminator.
+            self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
+            self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+            self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+            self.send_header("X-Frame-Options", "DENY")
             if filename:
                 self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
             for name, value in (headers or {}).items():
@@ -480,6 +668,9 @@ def make_server(port, backend, bind="127.0.0.1", allowed_hosts=(), policy=None):
             if origin and origin not in ("http://" + host, "https://" + host):
                 self.send({"error": "Origin not allowed.", "code": "origin_not_allowed"}, 403)
                 return False
+            if not self._edge_allowed(urlsplit(self.path).path):
+                self.send({"error": "Direct origin access is not allowed.", "code": "direct_origin_blocked"}, 403)
+                return False
             return True
 
         def do_GET(self):
@@ -495,10 +686,10 @@ def make_server(port, backend, bind="127.0.0.1", allowed_hosts=(), policy=None):
                 self.send(content, mime=mime); return
             if path == "/api/config": self.send({"csrf_token": token, "mode": backend["mode"],
                                                   "intelligence_provider": backend.get("intelligence_provider", "unavailable")}); return
-            if path == "/api/scans": self.send({"scans": backend["list"](self.client_address[0])}); return
+            if path == "/api/scans": self.send({"scans": backend["list"](self.client_ip)}); return
             parts = path.strip("/").split("/")
             if len(parts) >= 3 and parts[:2] == ["api", "scans"]:
-                job = backend["get"](parts[2], self.client_address[0])
+                job = backend["get"](parts[2], self.client_ip)
                 if job:
                     if len(parts) == 3: self.send(job); return
                     if parts[3:] == ["preview"]: self.send({"preview": backend["preview"](parts[2]) or None}); return
@@ -527,16 +718,16 @@ def make_server(port, backend, bind="127.0.0.1", allowed_hosts=(), policy=None):
 
         def do_POST(self):
             if not self.allowed(): return
-            if serve_agent_post(self, scoped_backend(self.client_address[0]), self.path, policy, create_scan): return
+            if serve_agent_post(self, scoped_backend(self.client_ip), self.path, policy, create_scan): return
             parts = urlsplit(self.path).path.strip("/").split("/")
             if len(parts) == 4 and parts[:2] == ["api", "scans"] and parts[3] == "intelligence":
                 if self.headers.get("X-CSRF-Token") != token:
                     self.send({"error": "Invalid scan token."}, 403); return
                 try:
-                    if not backend["get"](parts[2], self.client_address[0]):
+                    if not backend["get"](parts[2], self.client_ip):
                         self.send({"error": "Not found."}, 404); return
-                    deep_limiter.admit(self.client_address[0])
-                    job_id = backend["deep"](parts[2], self.client_address[0])
+                    deep_limiter.admit(self.client_ip)
+                    job_id = backend["deep"](parts[2], self.client_ip)
                     if not job_id: self.send({"error": "Analysis is unavailable in demo mode."}, 409); return
                     self.send({"intelligence_job_id": job_id}, 202); return
                 except ValueError as error:
@@ -561,7 +752,7 @@ def make_server(port, backend, bind="127.0.0.1", allowed_hosts=(), policy=None):
             except (ValueError, TypeError, AttributeError) as error:
                 self.send({"error": str(error) or "Invalid domain.", "code": "invalid_domain"}, 400); return
             try:
-                self.send({"job_id": create_scan(domain, self.client_address[0], target_url)}, 202)
+                self.send({"job_id": create_scan(domain, self.client_ip, target_url)}, 202)
             except ScanRateLimitError as error:
                 self.send({"error": str(error), "code": "scan_rate_limited", "retry_after": error.retry_after}, 429, headers={"Retry-After": error.retry_after})
             except OverflowError as error:

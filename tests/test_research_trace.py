@@ -87,6 +87,29 @@ class ResearchTraceTests(unittest.TestCase):
         self.assertEqual(trace["raw_results"], 2)
         self.assertEqual(trace["parsed_sources"], 2)
 
+    def test_untitled_search_sources_get_url_derived_labels(self):
+        # Production shape is {"type": "url", "url": ...} with no title key.
+        envelope = {"output_text": json.dumps(ANSWER), "output": [
+            {"type": "web_search_call", "status": "completed",
+             "action": {"type": "search", "query": "rival x",
+                        "sources": [{"type": "url", "url": "https://rival.test/docs/pricing/plans"},
+                                    {"type": "url", "url": "https://rival.test/"},
+                                    {"url": "https://docs.test/y", "title": "Docs Y"}]}},
+            {"type": "message", "content": [
+                {"type": "output_text", "text": json.dumps(ANSWER), "annotations": []}]}]}
+        result, _ = _analyze(envelope)
+        self.assertEqual([(s["url"], s["label"]) for s in result["web_sources"]],
+                         [("https://rival.test/docs/pricing/plans", "rival.test — /docs/pricing"),
+                          ("https://rival.test/", "rival.test"),
+                          ("https://docs.test/y", "Docs Y")])
+        self.assertIsNone(result["research_trace"]["fallback_reason"])
+
+    def test_untitled_citation_gets_url_derived_label(self):
+        annotations = [{"type": "url_citation", "url": "https://rival.test/x"}]
+        result, _ = _analyze(_message_envelope(annotations))
+        self.assertEqual(result["web_sources"],
+                         [{"label": "rival.test — /x", "url": "https://rival.test/x", "origin": "citation"}])
+
     def test_no_search_calls_sets_fallback_reason(self):
         result, _ = _analyze({"output_text": json.dumps(ANSWER), "output": []})
         self.assertEqual(result["web_sources"], [])

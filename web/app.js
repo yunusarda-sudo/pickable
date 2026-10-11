@@ -1,7 +1,7 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
 const state = { report: null, jobId: null, token: null, generation: 0, config: null, intelligenceTimer: null, intelligenceDepth: "short", intelligenceMissingPolls: 0 };
-const nativeLabels = { PASS: "Pass", FAIL: "Missing", WARNING: "Warning", UNKNOWN: "Unclear", NOT_APPLICABLE: "N/A", PENDING: "Waiting" };
+const nativeLabels = { PASS: "Pass", FAIL: "Missing", WARNING: "Warning", UNKNOWN: "Not evaluated", NOT_APPLICABLE: "N/A", PENDING: "Waiting" };
 const sourceLabels = { completed: "Completed", partial: "Partial", running: "Running", pending: "Waiting", unavailable: "Unavailable", failed: "Error", timeout: "Timed out", interrupted: "Interrupted" };
 
 function element(tag, className, text) {
@@ -90,19 +90,21 @@ function renderReportExperience(report) {
     if (check && check.scoring_status !== "FAIL") continue;
     if (check) covered.add(check.check_id);
     cards.push({check, title: check?.title || "Improve agent readiness", action: fix.recommendation,
-      source: check?.scoring_source || fix.source || null, providerRecommendation: fix.source === "cloudflare"});
+      source: check?.scoring_source || fix.source || null, providerRecommendation: fix.source === "cloudflare",
+      pickableAuthored: fix.source === "pickable"});
   }
   for (const check of model.actions) {
     if (covered.has(check.check_id)) continue;
     const guidance = checkGuidance[check.check_id];
-    if (guidance) cards.push({check, title: check.title, action: guidance[1], source: check.scoring_source});
+    if (guidance) cards.push({check, title: check.title, action: guidance[1], source: check.scoring_source, pickableAuthored: true});
   }
   $("action-count").textContent = `${cards.length} recommendations`;
   for (const [index, cardData] of cards.entries()) {
     const card = element("article", "action-card");
     card.append(element("span", "action-number", String(index + 1).padStart(2,"0")), element("h3", "", cardData.title));
-    if (cardData.source === "cloudflare") card.append(element("span", "action-basis", cardData.providerRecommendation ? "Cloudflare recommendation" : "Cloudflare found this opportunity · Pickable recommendation"));
-    else if (cardData.source === "ora") card.append(element("span", "action-basis", "Recommended improvement"));
+    if (cardData.pickableAuthored) card.append(element("span", "action-basis", "Pickable recommendation · evidence from " + (cardData.source === "cloudflare" ? "Cloudflare" : cardData.source === "ora" ? "Ora" : "site checks")));
+    else if (cardData.source === "cloudflare") card.append(element("span", "action-basis", cardData.providerRecommendation ? "Cloudflare recommendation" : "Evidence from Cloudflare · recommendation by Pickable"));
+    else if (cardData.source === "ora") card.append(element("span", "action-basis", "Evidence reported by Ora · recommended improvement"));
     card.append(element("p", "", cardData.action));
     $("action-list").append(card);
   }
@@ -146,7 +148,7 @@ function renderReadinessFindings(report) {
       const meaning = scalar(check.measurement_definition) || checkGuidance[check.check_id]?.[0] || "This check is part of the layer score.";
       body.append(element("p", "finding-purpose", meaning));
       const source = providerNames[check.scoring_source];
-      if (source) body.append(element("p", "finding-context", `Result observed by ${source}.`));
+      if (source) body.append(element("p", "finding-context", `Evidence reported by ${source}.`));
       if (check.scoring_status === "FAIL") {
         const fix = recommendations.find(item => item.check_id === check.check_id)?.recommendation || checkGuidance[check.check_id]?.[1];
         if (fix) body.append(element("p", "finding-context", `Recommended next step: ${fix}`));
@@ -170,7 +172,10 @@ function renderScore(score, prefix) {
   $(prefix + "score-total").parentElement.classList.toggle("pending", pending);
   if (pending) { const spinner = element("span", "spinner"); spinner.setAttribute("role", "status"); spinner.setAttribute("aria-label", "Calculating score"); $(prefix + "score-total").replaceChildren(spinner); }
   else $(prefix + "score-total").textContent = score.total ?? "—";
-  $(prefix + "score-coverage").textContent = pending ? "Waiting for the remaining sources before scoring." : `${score.coverage}% weighted measurement coverage${score.coverage < 100 ? " · incomplete coverage" : ""}`;
+  const coverage = typeof score.coverage === "number" && Number.isFinite(score.coverage) ? score.coverage : 0;
+  if (pending) $(prefix + "score-coverage").textContent = "Waiting for the remaining sources before scoring.";
+  else if (score.total === null || score.total === undefined) $(prefix + "score-coverage").textContent = `${coverage}% of weighted checks evaluated · Insufficient data`;
+  else $(prefix + "score-coverage").textContent = `${coverage}% of weighted checks evaluated${coverage < 100 ? " · incomplete coverage" : ""}`;
   $(prefix + "layers").replaceChildren();
   for (const layer of Object.values(score.breakdown || {})) {
     const row = element("div", "layer"); const track = element("div", "layer-track"); const fill = element("div", "layer-fill"); if (pending) track.classList.add("loading");
@@ -181,47 +186,116 @@ function renderScore(score, prefix) {
 }
 
 const marketingCopy = {
-  social: ["Social presence", "Can visitors find and follow your brand?", "01"],
-  content: ["Content & blog", "Do you publish content, and keep it fresh?", "02"],
+  social: { title: "Social presence", question: "Can potential customers discover and connect with your brand across social platforms?",
+    intro: "An accessible social presence helps visitors learn more about your business, explore your activity, and engage with your brand beyond your website.", index: "01" },
+  content: { title: "Content & blog", question: "Does your website provide useful, discoverable content for potential customers?",
+    intro: "A content strategy can help your business educate its audience, address customer questions, demonstrate expertise, and attract relevant visitors through search and other distribution channels.", index: "02" },
 };
+// Two-layer check copy: `summary` is the one-line closed explanation;
+// `evaluate` / `why` / `success` open inside the <details> body.
 const marketingGuidance = {
-  "social.profiles": ["Social links let visitors verify your brand and follow you.", "Link your active social profiles (e.g. LinkedIn, X, Instagram) from the site header or footer."],
-  "content.blog": ["A blog brings in search traffic and gives people a reason to come back.", "Start a blog (e.g. /blog) and link it from your main navigation."],
-  "content.blog_recent": ["A recently updated blog signals an active, trustworthy business.", "Publish a new post; aim for at least one every month or two."],
-  "content.blog_cadence": ["Posting regularly compounds search traffic and audience growth.", "Plan a simple content calendar with at least one post a month."],
+  "social.profiles": {
+    summary: "Whether your site links to official brand profiles visitors can verify and follow.",
+    evaluate: "We look for publicly accessible links to official brand profiles on platforms such as LinkedIn, Instagram, X, YouTube, and other relevant social networks.",
+    why: "Clear links to official profiles make it easier for visitors to verify your brand identity, discover company updates, and engage through their preferred channels. They can also provide additional signals of business activity and credibility.",
+    success: "Your website clearly links to at least one identifiable official social media profile. This confirms discoverability, not necessarily audience engagement or social media performance.",
+    action: "Link your active social profiles (e.g. LinkedIn, X, Instagram) from the site header or footer." },
+  "content.blog": {
+    summary: "Whether your site offers an identifiable collection of informational content.",
+    evaluate: "We check whether your website includes an accessible blog, resource library, insights section, knowledge center, or comparable collection of informational content.",
+    why: "Useful content gives prospective customers opportunities to understand the problems your product solves before making a purchasing decision. Relevant, well-structured pages may also become entry points through search engines and other discovery channels.",
+    success: "Your website contains an identifiable content section accessible to visitors. This confirms content availability, not its quality or traffic performance.",
+    action: "Start a blog (e.g. /blog) and link it from your main navigation." },
+  "content.blog_recent": {
+    summary: "Whether your content section shows recently published material.",
+    evaluate: "We examine available publication dates to determine whether new content has been added recently.",
+    why: "Recent, relevant content can demonstrate that your business continues to publish information about its product, industry, or customer needs. However, publication recency alone does not establish content quality, credibility, or SEO performance.",
+    success: "We can verify that your content section includes at least one publication within the evaluation's defined recency period.",
+    action: "Publish a new post; aim for at least one every month or two." },
+  "content.blog_cadence": {
+    summary: "Whether your publishing history shows a recurring pattern rather than isolated updates.",
+    evaluate: "We examine the dates of multiple published articles to assess whether the website demonstrates a recurring publishing pattern rather than isolated updates.",
+    why: "A consistent publishing process can support long-term audience development and sustained content distribution. Its effectiveness still depends on relevance, quality, competition, and whether the content reaches the intended audience.",
+    success: "Available publication history provides evidence of recurring content activity. This does not independently prove growth in search traffic, engagement, or conversions.",
+    action: "Plan a simple content calendar with at least one post a month." },
 };
+function marketingStatus(check) {
+  if (check.scoring_status === "PASS") return "Passed";
+  if (check.scoring_status === "FAIL") return "Missing";
+  if (check.scoring_status === "PENDING") return "Waiting";
+  return "Not evaluated";
+}
 function renderMarketing(marketing) {
   const model = modelReport(marketing);
+  const checks = Array.isArray(marketing.checks) ? marketing.checks : [];
+  const insufficient = marketing.score.total === null || marketing.score.total === undefined;
+  const unevaluated = checks.filter(c => !["PASS", "FAIL", "PENDING"].includes(c.scoring_status)).length;
   renderScore(marketing.score, "mk-");
-  $("mk-headline").textContent = marketing.score.final === false ? "Calculating your score" : marketing.score.total === null ? "We couldn't read your site." : model.failed ? "There is room to grow." : model.uncertain ? "Good basics, incomplete picture." : "Your marketing basics look solid.";
-  $("mk-summary").textContent = marketing.source?.error ? `The marketing checks could not load your site: ${marketing.source.error}` : `${model.passed} of ${marketing.checks.length} playbook checks passed, ${model.failed} need work.`;
+  if (marketing.score.final === false) {
+    $("mk-headline").textContent = "Calculating your score";
+    $("mk-summary").textContent = "We are still collecting evidence from your website. Results appear as soon as each check finishes.";
+  } else if (insufficient) {
+    $("mk-headline").textContent = "We couldn't complete your website analysis";
+    $("mk-summary").textContent = "Pickable couldn't retrieve enough information from this website to evaluate its marketing presence. "
+      + "This doesn't mean your website has failed these checks or that your marketing setup is incomplete. "
+      + "It means we don't yet have sufficient evidence to make a reliable assessment. "
+      + "Your Marketing Playbook Score reflects how effectively your website supports essential marketing activities, including social media visibility and content publishing. "
+      + "A score will be calculated once sufficient evidence has been collected."
+      + (marketing.source?.error ? ` Details: ${marketing.source.error}` : "");
+  } else {
+    $("mk-headline").textContent = model.failed ? "There is room to grow." : model.uncertain ? "Good basics, incomplete picture." : "Your marketing basics look solid.";
+    $("mk-summary").textContent = marketing.source?.error ? `The marketing checks could not load your site: ${marketing.source.error}` : `${model.passed} of ${checks.length} playbook checks passed, ${model.failed} need work.`;
+  }
   $("mk-counts").replaceChildren();
-  for (const [count, label, tone] of [[model.passed,"Passed","positive"],[model.failed,"Missing","negative"],[model.uncertain,"Not scored","neutral"]]) {
+  for (const [count, label, tone] of [[model.passed,"Passed","positive"],[model.failed,"Missing","negative"],[unevaluated,"Not evaluated","neutral"]]) {
     const item = element("div", "count-item " + tone); item.append(element("strong", "", count), element("span", "", label)); $("mk-counts").append(item);
   }
-  $("mk-action-count").textContent = `${model.actions.length} checks`;
+  $("mk-action-count").textContent = marketing.score.final === false ? "Checking now" : insufficient ? "Not available yet" : `${model.actions.length} recommendations`;
   $("mk-action-list").replaceChildren();
   for (const [index, check] of model.actions.entries()) {
     const card = element("article", "action-card");
-    card.append(element("span", "action-number", String(index + 1).padStart(2,"0")), element("h3", "", check.title), element("p", "", marketingGuidance[check.check_id]?.[1] || check.measurement_definition));
+    const guidance = marketingGuidance[check.check_id];
+    const actionText = typeof guidance === "object" ? guidance.action : guidance?.[1] || check.measurement_definition;
+    card.append(element("span", "action-number", String(index + 1).padStart(2,"0")), element("h3", "", check.title), element("p", "", actionText));
     $("mk-action-list").append(card);
   }
-  if (!model.actions.length) $("mk-action-list").append(element("p", "report-empty", marketing.score.final === false ? "Checking your site now." : "No gaps found in the playbook checks."));
+  if (marketing.score.final === false) $("mk-action-list").append(element("p", "report-empty", "Checking your site now."));
+  else if (insufficient) $("mk-action-list").append(element("p", "report-empty",
+    "Recommendations are not available yet. Pickable generates recommendations from issues identified during an actual website assessment. "
+    + "Because the required checks couldn't be completed, we can't reliably identify missing marketing elements or recommend improvements. "
+    + "Suggested action: retry the scan. If the issue persists, confirm that your website is publicly accessible and doesn't block automated requests."));
+  else if (!model.actions.length) $("mk-action-list").append(element("p", "report-empty", model.uncertain ? "No changes to recommend from the available results. Some areas need more information." : "No improvements were identified in this scan."));
   $("mk-findings").replaceChildren();
   for (const [key, copy] of Object.entries(marketingCopy)) {
     const section = element("section", "finding-category"); const heading = element("div", "category-heading"); const titles = element("div");
-    titles.append(element("span", "category-number", copy[2]), element("h3", "", copy[0]), element("p", "", copy[1])); heading.append(titles); section.append(heading);
-    for (const check of marketing.checks.filter(c => c.category === key)) {
+    titles.append(element("span", "category-number", copy.index), element("h3", "", copy.title), element("p", "", copy.question), element("p", "finding-context", copy.intro)); heading.append(titles); section.append(heading);
+    for (const check of checks.filter(c => c.category === key)) {
       const row = element("details", "finding-row"); const summary = element("summary");
       summary.append(badge(check.scoring_status), element("span", "finding-title", check.title), element("span", "finding-arrow", "+")); row.append(summary);
       const body = element("div", "finding-body");
-      body.append(element("p", "finding-purpose", marketingGuidance[check.check_id]?.[0] || check.measurement_definition));
+      const guidance = marketingGuidance[check.check_id];
+      const summaryText = typeof guidance === "object" ? guidance.summary : guidance?.[0] || check.measurement_definition;
+      if (summaryText) body.append(element("p", "finding-purpose", summaryText));
+      body.append(element("p", "finding-context", `Status: ${marketingStatus(check)}`));
+      if (typeof guidance === "object") {
+        body.append(element("p", "finding-context", `What we evaluate: ${guidance.evaluate}`));
+        body.append(element("p", "finding-context", `Why it matters: ${guidance.why}`));
+        body.append(element("p", "finding-context", `What a successful result means: ${guidance.success}`));
+      }
       if (check.message) body.append(element("p", "finding-context", check.message));
       const profiles = check.details?.profiles;
       if (profiles && typeof profiles === "object") {
         const list = element("ul", "profile-list");
         for (const [network, url] of Object.entries(profiles)) list.append(element("li", "", `${network} · ${scalar(url)}`));
         body.append(list);
+      }
+      if (check.scoring_status === "FAIL") {
+        const actionText = typeof guidance === "object" ? guidance.action : guidance?.[1];
+        if (actionText) body.append(element("p", "finding-context", `Recommended next step: ${actionText}`));
+      } else if (!["PASS", "FAIL"].includes(check.scoring_status)) {
+        body.append(element("p", "finding-context", check.scoring_status === "PENDING"
+          ? "This check is waiting for source evidence and doesn't affect the score yet."
+          : "This check couldn't be evaluated from the available evidence, so it doesn't count as a pass or a failure."));
       }
       row.append(body); section.append(row);
     }
@@ -296,9 +370,19 @@ function renderIntelligence(job) {
     ? "Quick page summary · detailed analysis continues"
     : ({queued:"Queued",running:"Reading the public site…",completed:"Based on public evidence",unavailable:"AI analysis is unavailable",failed:"Analysis could not finish",partial:"Partial analysis · quick page summary available",interrupted:"Analysis was interrupted · quick page summary available"})[status] || "Preparing analysis";
   $("deep-analysis").textContent = localModel ? "Analyze this page in more detail ↗" : "Research deeper ↗";
-  $("deep-analysis").disabled = ["queued", "running"].includes(status);
+  $("deep-analysis").disabled = ["queued", "running"].includes(status)
+    || (status === "unavailable" && /not configured/i.test(String(job?.error || "")));
   if (!job?.report) {
-    $("intelligence-summary").textContent = status === "unavailable" ? "The site scan is ready, but product analysis is unavailable. Check the analysis service configuration or try again later." : status === "failed" ? "The readiness report is available; product analysis did not complete." : status === "interrupted" ? "The readiness report is available; product analysis was interrupted. Reload to resume." : "We are identifying the product, its audience, and the value described on your URL.";
+    if (status === "unavailable") {
+      const notConfigured = /not configured/i.test(String(job?.error || ""));
+      $("intelligence-summary").textContent = notConfigured
+        ? "Product analysis is not enabled on this server. The readiness scores and marketing checks above are unaffected."
+        : "Product analysis unavailable. Pickable was unable to extract enough reliable information from this website to identify its core offering and intended audience.";
+      for (const [title, value] of [["Product positioning", "What the product does and which problem it aims to solve."], ["Target audience", "Which individuals, roles, or businesses the product appears to serve."], ["Value proposition", "What benefits the product communicates and how it differentiates itself."], ["Use cases", "Which real-world needs and workflows the product is designed to address."]]) {
+        const item = element("article", "intelligence-fact"); item.append(element("h3", "", title), element("p", "", value)); $("intelligence-details").append(item);
+      }
+      $("intelligence-sources").append(element("p", "intelligence-unknown", "Action: retry website analysis. No marketing weaknesses or opportunities have been confirmed for this website yet. Findings based on indirect evidence should be treated as hypotheses, not verified facts."));
+    } else $("intelligence-summary").textContent = status === "failed" ? "The readiness report is available; product analysis did not complete." : status === "interrupted" ? "The readiness report is available; product analysis was interrupted. Reload to resume." : "We are identifying the product, its audience, and the value described on your URL.";
     if (job?.error) $("intelligence-sources").append(element("p", "intelligence-unknown", String(job.error).slice(0, 300)));
     return;
   }
@@ -369,7 +453,7 @@ async function loadScan(id, generation) {
     if (result.report && key !== state.renderedKey) { state.renderedKey = key; renderReport(result.report); }
     else if (!result.report) setView("loading");
     $("loading-domain").textContent = scalar(result.domain || result.job?.domain, $("domain").value);
-    busy(true); notify(result.report ? "Partial results — more sources are still running; the report updates automatically." : "Sources are running. This can take a minute; results update as they arrive.");
+    busy(true); notify(result.report ? "" : "Sources are running. This can take a minute; results update as they arrive.");
     setTimeout(() => loadScan(id, generation).catch((error) => { if (generation === state.generation) { busy(false); setView("landing"); notify(error.message + " You can reopen the saved scan from history."); } }), 1800);
   } else {
     if (result.report) renderReport(result.report); else setView("landing");
@@ -423,8 +507,9 @@ $("close-history").addEventListener("click", () => $("history-dialog").close());
 for (const button of document.querySelectorAll("[data-mode-button]")) button.addEventListener("click", () => setMode(button.dataset.modeButton));
 
 /* Ambient discovery-field animation: restrained premium motion.
-   - 5 drifting nodes on slow organic (Lissajous) paths + glow pulsation.
-   - 2-3 light pulses traveling along the dashed connections.
+   - 10 drifting nodes on slow organic (Lissajous) paths + glow pulsation.
+   - Connections rebuilt from live node positions each frame (shared model).
+   - 2 light pulses lerped along live edges (no getPointAtLength jumps).
    - Gentle pointer parallax (lerped) on background layers only; hero
      text and form are never moved. Static SVG remains as no-JS fallback.
    - Single rAF loop, transform/opacity only, pauses when tab hidden or
@@ -446,45 +531,46 @@ for (const button of document.querySelectorAll("[data-mode-button]")) button.add
     var circles = Array.prototype.slice.call(svg.querySelectorAll("circle"));
     var link = svg.querySelector("path");
     if (!circles.length || !link) return;
-    var canMeasure = typeof link.getTotalLength === "function" && typeof link.getPointAtLength === "function";
 
-    // Pick 5 spread-out nodes so most of the field stays perfectly still.
-    var picks = [0, 2, 5, 7, 9].filter(function (i) { return i < circles.length; });
-    while (picks.length < Math.min(4, circles.length)) picks.push(picks.length);
-    var nodes = picks.map(function (idx, k) {
-      var el = circles[idx];
+    // Shared animation model: every node drifts independently, edges are
+    // rebuilt from live node positions each frame so lines never detach.
+    // Edges mirror the static path: 0-1, 1-2, 3-4, 4-5, 6-7, 8-9.
+    var edges = [[0, 1], [1, 2], [3, 4], [4, 5], [6, 7], [8, 9]].filter(function (e) {
+      return e[0] < circles.length && e[1] < circles.length;
+    });
+    var nodes = circles.map(function (el, k) {
       el.classList.add("drift-node");
       return {
         el: el,
         bx: parseFloat(el.getAttribute("cx")) || 0,
         by: parseFloat(el.getAttribute("cy")) || 0,
         base: parseFloat(el.getAttribute("opacity")) || el.opacity || 0.64,
-        ax: 6 + (k % 3) * 3, ay: 5 + ((k + 1) % 3) * 3,
-        w1: (2 * Math.PI) / (15000 + k * 3700), w2: (2 * Math.PI) / (19000 + k * 2900),
+        x: parseFloat(el.getAttribute("cx")) || 0,
+        y: parseFloat(el.getAttribute("cy")) || 0,
+        ax: 10 + (k % 4) * 4, ay: 8 + ((k + 1) % 4) * 3,
+        w1: (2 * Math.PI) / (9000 + k * 1800), w2: (2 * Math.PI) / (11000 + k * 1500),
         p1: k * 1.7, p2: k * 2.3,
         wo: (2 * Math.PI) / (9000 + k * 2100), po: k * 1.1,
         rx: 0, ry: 0,
       };
     });
 
-    // Traveling light pulses along the dashed connections (2 on desktop).
+    // Traveling light pulses: sparse, one per edge-group, lerped in
+    // model space so they stay exactly on the live connection.
     var pulses = [];
-    var pathLen = 0;
-    if (canMeasure) {
-      try { pathLen = link.getTotalLength(); } catch (e) { pathLen = 0; }
-    }
-    if (pathLen > 0 && typeof document.createElementNS === "function") {
+    if (typeof document.createElementNS === "function") {
       var NS = "http://www.w3.org/2000/svg";
       var defs = [
-        { dur: 9000, phase: 0 },
-        { dur: 13000, phase: 0.45 },
+        { dur: 9000, phase: 0, edge: 1 },
+        { dur: 13000, phase: 0.45, edge: 3 },
       ];
       for (var d = 0; d < defs.length; d++) {
+        if (defs[d].edge >= edges.length) continue;
         var dot = document.createElementNS(NS, "circle");
         dot.setAttribute("class", "pulse-dot");
         dot.setAttribute("r", "3");
         svg.appendChild(dot);
-        pulses.push({ el: dot, dur: defs[d].dur, phase: defs[d].phase });
+        pulses.push({ el: dot, dur: defs[d].dur, phase: defs[d].phase, edge: defs[d].edge });
       }
     }
 
@@ -547,19 +633,28 @@ for (const button of document.querySelectorAll("[data-mode-button]")) button.add
           }
         }
         n.rx += (gx - n.rx) * 0.06; n.ry += (gy - n.ry) * 0.06;
+        n.x = n.bx + dx + n.rx; n.y = n.by + dy + n.ry;
         n.el.setAttribute("transform", "translate(" + (dx + n.rx).toFixed(2) + " " + (dy + n.ry).toFixed(2) + ")");
         var glow = 0.5 + 0.5 * Math.sin(n.wo * t + n.po);
         n.el.setAttribute("opacity", (n.base * (0.55 + 0.45 * glow)).toFixed(3));
       }
 
+      // Rebuild connections from live positions: zero deviation by construction.
+      try {
+        var parts = [];
+        for (var e = 0; e < edges.length; e++) {
+          var a = nodes[edges[e][0]], b = nodes[edges[e][1]];
+          parts.push("M" + a.x.toFixed(1) + " " + a.y.toFixed(1) + " L" + b.x.toFixed(1) + " " + b.y.toFixed(1));
+        }
+        link.setAttribute("d", parts.join(" "));
+      } catch (e) { /* static fallback stays */ }
+
       for (var j = 0; j < pulses.length; j++) {
         var pu = pulses[j];
         var prog = ((t / pu.dur) + pu.phase) % 1;
-        try {
-          var pt = link.getPointAtLength(prog * pathLen);
-          pu.el.setAttribute("cx", pt.x.toFixed(1));
-          pu.el.setAttribute("cy", pt.y.toFixed(1));
-        } catch (e) { /* static fallback stays */ }
+        var pa = nodes[edges[pu.edge][0]], pb = nodes[edges[pu.edge][1]];
+        pu.el.setAttribute("cx", (pa.x + (pb.x - pa.x) * prog).toFixed(1));
+        pu.el.setAttribute("cy", (pa.y + (pb.y - pa.y) * prog).toFixed(1));
         var env = Math.sin(prog * Math.PI); // fade in/out at path ends
         pu.el.setAttribute("opacity", (env * 0.9).toFixed(3));
       }

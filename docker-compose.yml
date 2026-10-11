@@ -19,6 +19,12 @@ services:
       - OPENAI_MODEL=${OPENAI_MODEL:-}
       - OPENAI_QUICK_MODEL=${OPENAI_QUICK_MODEL:-gpt-6-luna}
       - OPENAI_DEEP_MODEL=${OPENAI_DEEP_MODEL:-gpt-6.1-sol}
+      # Trust Traefik/docker (default private ranges) so per-client rate limits
+      # and IP-scoped reads use CF-Connecting-IP / X-Forwarded-For.
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-}
+      # After Cloudflare proxy (orange cloud) is ON, set to 1 so direct-to-IP
+      # requests that bypass the edge are rejected at the app (health exempt).
+      - PICKABLE_REQUIRE_CF=${PICKABLE_REQUIRE_CF:-0}
     volumes:
       - ./data:/app/data
     networks:
@@ -35,6 +41,14 @@ services:
       - "traefik.http.routers.pickable-https.tls.certresolver=myhttpchallenge"
       - "traefik.http.services.pickable.loadbalancer.server.port=8765"
       - "traefik.docker.network=root_default"
+      # Edge security headers (defense in depth; app sends the same set).
+      - "traefik.http.middlewares.pickable-secure.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.pickable-secure.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.pickable-secure.headers.stsPreload=true"
+      - "traefik.http.middlewares.pickable-secure.headers.frameDeny=true"
+      - "traefik.http.middlewares.pickable-secure.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.pickable-secure.headers.referrerPolicy=strict-origin-when-cross-origin"
+      - "traefik.http.routers.pickable-https.middlewares=pickable-secure"
 
 networks:
   root_default:

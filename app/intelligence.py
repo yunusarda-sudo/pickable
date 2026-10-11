@@ -233,6 +233,31 @@ def _append_unknown(result, note):
         result["unknowns"].append(note)
 
 
+def _source_label(label, url):
+    """Human-readable source label; derive from the URL when the provider omits titles.
+
+    Observed production shape for web_search_call.action.sources is
+    {"type": "url", "url": ...} with no title key, which used to collapse
+    every source to the useless label "Web source".
+    """
+    text = str(label or "").strip()
+    if text:
+        return text[:180]
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "Web source"
+    host = parts.hostname or ""
+    if not host:
+        return "Web source"
+    path = (parts.path or "").rstrip("/")
+    if len(path) > 1:
+        segs = [s for s in path.split("/") if s][:2]
+        if segs:
+            return f"{host} — /{'/'.join(segs)}"[:180]
+    return host[:180]
+
+
 def _safe_research_source(label, url, origin):
     """Keep only fetchable public HTTPS sources; return a canonical row or None."""
     if not isinstance(url, str) or not url.startswith("https://"):
@@ -242,7 +267,7 @@ def _safe_research_source(label, url, origin):
         public_addresses(parts.hostname, port)
     except (ValueError, OSError):
         return None
-    return {"label": str(label or "Web source")[:180], "url": url, "origin": origin}
+    return {"label": _source_label(label, url), "url": url, "origin": origin}
 
 
 def extract_research_sources(envelope):
@@ -335,20 +360,31 @@ class IntelligenceProvider:
     def __init__(self, api_key=None, model=None, timeout=70, provider=None):
         self.api_key = api_key if api_key is not None else os.environ.get("OPENAI_API_KEY", "")
         selected = (provider or os.environ.get("INTELLIGENCE_PROVIDER") or "").strip().lower()
-        self.provider = selected or ("openai" if self.api_key else "ollama")
+        # No silent local default: Ollama is strictly opt-in (INTELLIGENCE_PROVIDER=ollama).
+        # Without an explicit provider or a hosted key, product analysis is unavailable —
+        # scans must still complete on adapter evidence alone.
+        if selected in ("", "auto"):
+            selected = "openai" if self.api_key else "unavailable"
+        self.provider = selected
         self.last_usage = None
         self.last_finish = None
         self.last_model = None
         self.last_trace = None
-        if self.provider not in ("openai", "ollama"):
+        self.unavailable_reason = None
+        if self.provider not in ("openai", "ollama", "unavailable"):
             raise ValueError("INTELLIGENCE_PROVIDER must be 'ollama' or 'openai'.")
+        if self.provider == "unavailable":
+            self.unavailable_reason = ("Product analysis is not configured on this server: set "
+                                       "INTELLIGENCE_PROVIDER=ollama with a reachable OLLAMA_BASE_URL, "
+                                       "or INTELLIGENCE_PROVIDER=openai with OPENAI_API_KEY.")
+            self.quick_model = self.deep_model = self.model = None
         if self.provider == "openai":
             legacy_model = os.environ.get("OPENAI_MODEL", "").strip()
             self.quick_model = (model or os.environ.get("OPENAI_QUICK_MODEL", "").strip()
                                 or legacy_model or "gpt-6-luna")
             self.deep_model = model or os.environ.get("OPENAI_DEEP_MODEL", "").strip() or "gpt-6.1-sol"
             self.model = self.quick_model
-        else:
+        elif self.provider == "ollama":
             self.quick_model = self.deep_model = model or os.environ.get("OLLAMA_MODEL", "qwen3:8b")
             self.model = self.quick_model
         self.timeout = timeout
@@ -362,12 +398,18 @@ class IntelligenceProvider:
         self.ollama_host = ollama_url.hostname
         self.ollama_port = ollama_url.port or (443 if ollama_url.scheme == "https" else 80)
 
+    @property
+    def available(self):
+        return self.provider in ("openai", "ollama")
+
     def model_for(self, depth="short"):
         if self.provider == "openai" and depth == "deep":
             return self.deep_model
         return self.quick_model
 
     def analyze(self, evidence, depth="short", scan_context=None, fetch_page=None):
+        if self.provider == "unavailable":
+            raise RuntimeError(self.unavailable_reason or "Product analysis is not configured.")
         if self.provider == "openai" and not self.api_key:
             raise RuntimeError("OPENAI_API_KEY is not configured.")
         started = time.monotonic()
@@ -379,6 +421,7 @@ class IntelligenceProvider:
                 "If competitor evidence is absent, say it was not assessed.")
         if depth == "deep" and self.provider == "openai":
             mode = ("DEEP mode: search the web for official product, pricing, documentation, and competitor evidence. "
+                    "Use web_search for external claims and cite the searched pages so their sources are recorded. "
                     "A correct URL is not enough: price/plan claims need matching currency, billing period, seats, feature scope, and date. "
                     "Uncertain or conflicting findings go in unknowns.")
         elif depth == "deep":

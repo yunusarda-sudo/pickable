@@ -126,7 +126,8 @@ test('running scan shows a partial report as soon as one exists and keeps pollin
   assert.equal(ui.get('report-view').hidden, false);
   assert.equal(ui.get('results').hidden, false);
   assert.equal(ui.get('scan-button').disabled, true);
-  assert.match(ui.get('notice').textContent, /Partial results/);
+  assert.equal(ui.get('notice').textContent, '');
+  assert.equal(ui.get('notice').hidden, true);
   assert.equal(ui.get('step-ora').lastElementChild.textContent, '');
 });
 
@@ -155,7 +156,29 @@ test('marketing section renders its own score, actions and profiles', () => {
   ui.renderReport(value);
   assert.equal(String(ui.get('mk-score-total').textContent), '40');
   assert.equal(ui.get('mk-action-list').children.length, 1);
-  assert.equal(ui.get('mk-findings').children[0].children[1].children[1].children[2].children[0].textContent, 'X · https://x.com/acme');
+  const mkText = visibleText(ui.get('mk-findings'));
+  assert.match(mkText, /X · https:\/\/x\.com\/acme/);
+  assert.match(mkText, /What we evaluate:/);
+  assert.match(mkText, /Why it matters:/);
+  assert.match(mkText, /What a successful result means:/);
+});
+test('marketing section with no evidence never claims no gaps were found', () => {
+  const ui = setup(() => ({}));
+  const value = report();
+  value.marketing = {score: {total: null, coverage: 0, final: true, breakdown: {}}, source: {}, checks: [
+    {check_id: 'social.profiles', category: 'social', title: 'Social profiles linked', scoring_status: 'UNKNOWN', message: '', details: {}},
+    {check_id: 'content.blog', category: 'content', title: 'Has a blog', scoring_status: 'UNKNOWN', message: ''},
+    {check_id: 'content.blog_recent', category: 'content', title: 'Blog updated recently', scoring_status: 'UNKNOWN', message: ''},
+    {check_id: 'content.blog_cadence', category: 'content', title: 'Posts regularly', scoring_status: 'UNKNOWN', message: ''},
+  ]};
+  ui.renderReport(value);
+  assert.equal(String(ui.get('mk-score-total').textContent), '—');
+  assert.match(ui.get('mk-score-coverage').textContent, /Insufficient data/);
+  assert.match(ui.get('mk-headline').textContent, /couldn't complete/i);
+  assert.doesNotMatch(visibleText(ui.get('mk-action-list')), /No gaps found/);
+  assert.match(visibleText(ui.get('mk-action-list')), /Recommendations are not available yet/);
+  assert.match(visibleText(ui.get('mk-counts')), /Not evaluated/);
+  assert.match(visibleText(ui.get('mk-findings')), /Not evaluated/);
 });
 
 test('running scan without any source report stays on the loading view', async () => {
@@ -294,7 +317,7 @@ test('agent readiness exposes checks grouped by score layer with plain-language 
   assert.match(text, /Cloudflare/);
   assert.match(text, /Publish \/sitemap\.xml and reference it from robots\.txt\./);
   assert.match(text, /Markdown delivery/);
-  assert.match(text, /Unclear/);
+  assert.match(text, /Not evaluated/);
   assert.doesNotMatch(text, /raw provider title|raw provider recommendation|provider-json-secret|native_status|"sources"/);
 });
 

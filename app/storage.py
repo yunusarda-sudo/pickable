@@ -17,9 +17,19 @@ class Storage:
     def __init__(self, db_path: str = "./data/scan.db", recover_on_startup: bool = True):
         self._lock = threading.RLock()
         self.db_path = db_path
+        self._closed = False
         os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        # timeout=30: concurrent writer threads block instead of raising
+        # "database is locked"; combined with the RLock below this keeps the
+        # single shared connection safe. WAL lets readers proceed during a
+        # writer transaction (preview/history reads during scan updates).
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30.0,
+                                    isolation_level=None)
         self.conn.row_factory = sqlite3.Row
+        with self._lock:
+            self.conn.execute("PRAGMA journal_mode=WAL;")
+            self.conn.execute("PRAGMA busy_timeout=30000;")
+            self.conn.execute("PRAGMA synchronous=NORMAL;")
         self._init_schema()
         if recover_on_startup:
             self._mark_interrupted_on_startup()
@@ -138,6 +148,91 @@ class Storage:
             except (ValueError, TypeError): result["report"] = None
         return result
 
+    def find_completed_intelligence(self, domain: str, depth: str, since_iso: str) -> Optional[Dict[str, Any]]:
+        """Latest completed same-domain analysis newer than since_iso.
+
+        Lets concurrent or repeat visitors reuse one paid model call instead
+        of re-analyzing an unchanged site. ISO timestamps compare
+        lexicographically because every writer uses UTC isoformat.
+        """
+        with self._lock:
+            row = self.conn.execute(
+                """SELECT ij.report AS report FROM intelligence_jobs ij
+                   JOIN jobs j ON j.id = ij.scan_id
+                   WHERE j.domain = ? AND ij.depth = ? AND ij.status = 'completed'
+                     AND ij.finished_at IS NOT NULL AND ij.finished_at >= ?
+                   ORDER BY ij.finished_at DESC LIMIT 1""",
+                (domain, depth, since_iso)).fetchone()
+        if not row or not row["report"]:
+            return None
+        try:
+            return json.loads(row["report"])
+        except (ValueError, TypeError):
+            return None
+
+    def count_intelligence_since(self, depth: str, since_iso: str) -> int:
+        """Admission-time spend guard: how many analyses of this depth started today."""
+        with self._lock:
+            self._ensure_open()
+            row = self.conn.execute(
+                "SELECT COUNT(*) AS n FROM intelligence_jobs WHERE depth = ? AND created_at >= ?",
+                (depth, since_iso)).fetchone()
+        return int(row["n"]) if row else 0
+
+    def has_inflight_intelligence(self, domain: str, depth: str) -> bool:
+        """Cross-process in-flight check: any queued/running analysis for this domain+depth.
+
+        The in-memory `flight` set in server.py is per-process only. This query
+        sees rows written by any worker process sharing the same SQLite file, so
+        a second replica/process joins the running analysis instead of paying
+        for a duplicate model call.
+        """
+        with self._lock:
+            self._ensure_open()
+            row = self.conn.execute(
+                """SELECT 1 FROM intelligence_jobs ij
+                   JOIN jobs j ON j.id = ij.scan_id
+                   WHERE j.domain = ? AND ij.depth = ? AND ij.status IN ('queued', 'running')
+                   LIMIT 1""",
+                (domain, depth)).fetchone()
+        return row is not None
+
+    def try_claim_deep_budget(self, scan_id: str, model: str, today_iso: str, limit: int):
+        """Atomically claim one deep-analysis slot; returns job_id or None when exhausted.
+
+        The COUNT check and the INSERT run inside a single BEGIN IMMEDIATE
+        transaction, so N processes racing to claim the last slot cannot all
+        succeed: SQLite serializes the writers and only `limit` claims commit.
+        Callers must treat None as "budget exhausted" without calling the model.
+        """
+        with self._lock:
+            self._ensure_open()
+            self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = self.conn.execute(
+                    "SELECT COUNT(*) AS n FROM intelligence_jobs WHERE depth = 'deep' AND created_at >= ?",
+                    (today_iso,)).fetchone()
+                if int(row["n"]) >= limit:
+                    self.conn.execute("ROLLBACK")
+                    return None
+                now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                job_id = str(uuid.uuid4())
+                self.conn.execute(
+                    "INSERT INTO intelligence_jobs (id, scan_id, depth, status, created_at, model) VALUES (?, ?, 'deep', 'queued', ?, ?)",
+                    (job_id, scan_id, now, model))
+                self.conn.execute("COMMIT")
+                return job_id
+            except Exception:
+                try:
+                    self.conn.execute("ROLLBACK")
+                except Exception:
+                    pass
+                raise
+
+    def _ensure_open(self) -> None:
+        if self._closed:
+            raise RuntimeError("Storage is closed: workers must stop before the database is cleaned up.")
+
     def update_intelligence_job(self, job_id: str, status: str, report=None, error=None, usage=None, finish_reason=None) -> None:
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         started = now if status == "running" else None
@@ -250,4 +345,8 @@ class Storage:
 
 
     def close(self) -> None:
-        with self._lock: self.conn.close()
+        with self._lock:
+            if self._closed:
+                return
+            self.conn.close()
+            self._closed = True
