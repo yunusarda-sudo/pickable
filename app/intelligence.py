@@ -9,6 +9,7 @@ import json
 import os
 import re
 import ssl
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit, urlunsplit
@@ -232,6 +233,94 @@ def _append_unknown(result, note):
         result["unknowns"].append(note)
 
 
+def _safe_research_source(label, url, origin):
+    """Keep only fetchable public HTTPS sources; return a canonical row or None."""
+    if not isinstance(url, str) or not url.startswith("https://"):
+        return None
+    try:
+        parts, port = validate_url(url)
+        public_addresses(parts.hostname, port)
+    except (ValueError, OSError):
+        return None
+    return {"label": str(label or "Web source")[:180], "url": url, "origin": origin}
+
+
+def extract_research_sources(envelope):
+    """Normalize provider search evidence into canonical sources with loss telemetry.
+
+    Reads both inline `url_citation` annotations and `web_search_call` action
+    sources (which require `include: ["web_search_call.action.sources"]` on the
+    request). Returns (sources, trace); trace attributes every `web_sources: 0`
+    to its exact loss stage instead of leaving it to guesswork.
+    """
+    trace = {"search_calls": 0, "raw_results": 0, "parsed_sources": 0,
+             "report_citations": 0, "provider_errors": 0,
+             "fallback_reason": None, "latency_ms": None}
+    cited, searched = [], []
+    items = envelope.get("output", []) if isinstance(envelope, dict) else []
+    if not isinstance(items, list):
+        items = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") == "web_search_call":
+            trace["search_calls"] += 1
+            action = item.get("action")
+            action = action if isinstance(action, dict) else {}
+            sources = action.get("sources", [])
+            if not isinstance(sources, list):
+                continue
+            for source in sources:
+                if not isinstance(source, dict):
+                    continue
+                trace["raw_results"] += 1
+                row = _safe_research_source(source.get("title"), source.get("url"), "search")
+                if row:
+                    searched.append(row)
+                    trace["parsed_sources"] += 1
+            continue
+        if item.get("type") != "message":
+            continue
+        content = item.get("content", [])
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            annotations = part.get("annotations", [])
+            if not isinstance(annotations, list):
+                continue
+            for annotation in annotations:
+                if not isinstance(annotation, dict):
+                    continue
+                # Documented shape: {"type": "url_citation", "url": ..., "title": ...}.
+                # Also accept a nested {"url_citation": {...}} payload defensively.
+                nested = annotation.get("url_citation")
+                if isinstance(nested, dict):
+                    url, title = nested.get("url"), nested.get("title")
+                elif annotation.get("type") == "url_citation":
+                    url, title = annotation.get("url"), annotation.get("title")
+                else:
+                    continue
+                if not isinstance(url, str):
+                    continue
+                trace["raw_results"] += 1
+                row = _safe_research_source(title, url, "citation")
+                if row:
+                    cited.append(row)
+                    trace["parsed_sources"] += 1
+    merged = list({row["url"]: row for row in [*cited, *searched]}.values())[:12]
+    trace["report_citations"] = len(merged)
+    if not merged:
+        if trace["raw_results"] > 0:
+            trace["fallback_reason"] = "all_sources_filtered"
+        elif trace["search_calls"] == 0:
+            trace["fallback_reason"] = "no_search_calls"
+        else:
+            trace["fallback_reason"] = "no_annotations_no_sources"
+    return merged, trace
+
+
 def _pages_for_model(pages):
     packed = []
     for index, page in enumerate(pages):
@@ -250,8 +339,7 @@ class IntelligenceProvider:
         self.last_usage = None
         self.last_finish = None
         self.last_model = None
-        selected = (provider or os.environ.get("INTELLIGENCE_PROVIDER") or "").strip().lower()
-        self.provider = selected or ("openai" if self.api_key else "ollama")
+        self.last_trace = None
         if self.provider not in ("openai", "ollama"):
             raise ValueError("INTELLIGENCE_PROVIDER must be 'ollama' or 'openai'.")
         if self.provider == "openai":
@@ -282,6 +370,7 @@ class IntelligenceProvider:
     def analyze(self, evidence, depth="short", scan_context=None, fetch_page=None):
         if self.provider == "openai" and not self.api_key:
             raise RuntimeError("OPENAI_API_KEY is not configured.")
+        started = time.monotonic()
         pages = evidence_pages(evidence)
         selected_model = self.model_for(depth)
         allowed_refs = [page.get("ref") or "homepage" for page in pages] or ["homepage"]
@@ -323,6 +412,7 @@ class IntelligenceProvider:
             if depth == "deep":
                 payload["tools"] = [{"type": "web_search"}]
                 payload["max_tool_calls"] = 2
+                payload["include"] = ["web_search_call.action.sources"]
             conn = http.client.HTTPSConnection("api.openai.com", timeout=self.timeout, context=ssl.create_default_context())
             path = "/v1/responses"
         try:
@@ -388,6 +478,7 @@ class IntelligenceProvider:
             self.last_model = selected_model
             self.last_usage = None
             self.last_finish = None
+            self.last_trace = None
             if self.provider == "ollama":
                 message = envelope.get("message") if isinstance(envelope, dict) else None
                 text = message.get("content") if isinstance(message, dict) else None
@@ -423,23 +514,14 @@ class IntelligenceProvider:
             if depth == "short":
                 result["competitive_landscape"] = "Rakip araştırması bu kısa analizde yapılmadı."
             if depth == "deep" and self.provider == "openai":
-                citations = []
-                for item in envelope.get("output", []):
-                    for part in item.get("content", []):
-                        for annotation in part.get("annotations", []):
-                            citation = annotation.get("url_citation", {}) if isinstance(annotation, dict) else {}
-                            url = citation.get("url")
-                            if isinstance(url, str) and url.startswith("https://"):
-                                try:
-                                    parts, port = validate_url(url)
-                                    public_addresses(parts.hostname, port)
-                                    citations.append({"label": str(citation.get("title") or "Web source")[:180], "url": url})
-                                except (ValueError, OSError):
-                                    continue
-                result["web_sources"] = list({row["url"]: row for row in citations}.values())[:12]
+                web_sources, trace = extract_research_sources(envelope)
+                trace["latency_ms"] = int((time.monotonic() - started) * 1000)
+                self.last_trace = trace
+                result["web_sources"] = web_sources
+                result["research_trace"] = trace
                 if not result["web_sources"]:
                     result["competitive_landscape"] = "No source-linked competitor evidence was returned; comparison remains unverified."
-                    _append_unknown(result, "Deep web research returned no extractable source citations.")
+                    _append_unknown(result, f"Deep web research returned no extractable source citations ({trace['fallback_reason']}).")
                 result["research_note"] = "Web sources are shown for review; verify each competitor claim against its cited page."
             elif depth == "deep":
                 result["competitive_landscape"] = "Rakip araştırması yapılmadı; bu analiz yalnızca girilen sayfalara dayanıyor."

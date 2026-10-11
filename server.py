@@ -125,12 +125,20 @@ def public_intelligence(job):
     report = job.get("report")
     safe_report = None
     if isinstance(report, dict):
-        keys = ("analysis_stage", "product_summary", "target_customers", "problem", "value_proposition", "competitive_landscape", "workflows", "evidence_refs", "unknowns", "sources", "web_sources", "research_note")
+        keys = ("analysis_stage", "product_summary", "target_customers", "problem", "value_proposition", "competitive_landscape", "workflows", "evidence_refs", "unknowns", "sources", "web_sources", "research_note", "research_trace")
         safe_report = {key: report[key] for key in keys if key in report}
         safe_report["sources"] = [{"label": row.get("label"), "url": row.get("url"), "retrieved_at": row.get("retrieved_at"), "sha256": row.get("sha256")}
                                    for row in safe_report.get("sources", []) if isinstance(row, dict) and isinstance(row.get("url"), str)]
         safe_report["web_sources"] = [{"label": row.get("label"), "url": row.get("url")}
                                        for row in safe_report.get("web_sources", []) if isinstance(row, dict) and isinstance(row.get("url"), str) and row["url"].startswith("https://")][:12]
+        trace = safe_report.get("research_trace")
+        if isinstance(trace, dict):
+            safe_report["research_trace"] = {
+                key: trace.get(key) for key in
+                ("search_calls", "raw_results", "parsed_sources", "report_citations", "fallback_reason", "latency_ms")
+                if isinstance(trace.get(key), int) or (key == "fallback_reason" and isinstance(trace.get(key), str))} or None
+        else:
+            safe_report.pop("research_trace", None)
     usage = None
     if any(isinstance(job.get(key), int) for key in ("input_tokens", "output_tokens", "total_tokens")):
         usage = {key: job.get(key) for key in ("input_tokens", "output_tokens", "total_tokens") if isinstance(job.get(key), int)}
