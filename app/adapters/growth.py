@@ -11,12 +11,14 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
+import http.client
 import json
+import os
 from urllib.parse import urljoin, urlsplit
 import xml.etree.ElementTree as ET
 
-from app.adapters.base import Adapter, AdapterResult
-from app.safe_fetch import safe_fetch
+from app.adapters.base import Adapter, AdapterResult, CheckRecord
+from app.safe_fetch import FetchResult, safe_fetch
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; PickableBot/0.1)", "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
 SOCIAL_HOSTS = {
@@ -28,6 +30,78 @@ SHARE_MARKERS = ("/share", "/intent", "sharer", "sharearticle", "/dialog/")
 BLOG_PATHS = ("/blog", "/news", "/articles", "/insights", "/journal", "/posts", "/stories", "/updates")
 FEED_TYPES = ("application/rss+xml", "application/atom+xml")
 FEED_GUESSES = ("feed", "rss.xml", "feed.xml", "feed.rss", "rss")  # tried under the blog, then the site root
+
+
+def _own_hosts():
+    """Public hostnames served by this server (normalized, www-folded)."""
+    hosts = set()
+    extra = os.environ.get("ALLOWED_HOSTS", "") + "," + os.environ.get("RENDER_EXTERNAL_HOSTNAME", "")
+    for host in extra.split(","):
+        host = host.strip().lower().removeprefix("www.")
+        if host:
+            hosts.add(host)
+    public = urlsplit(os.environ.get("PICKABLE_PUBLIC_URL", "")).hostname
+    if public:
+        hosts.add(public.lower().removeprefix("www."))
+    return hosts
+
+
+def _internal_port():
+    try:
+        return int(os.environ.get("PORT", 8765))
+    except ValueError:
+        return 8765
+
+
+def internal_fetch(domain, path="/", query="", timeout=8):
+    """Fetch our own public site over loopback.
+
+    Some hosts cannot reach their own public URL from inside (no hairpin
+    route, filtered DNS, or the edge lockdown answering direct egress).
+    The app serves the same content locally, and loopback callers pass host
+    validation plus the edge lockdown, so this is a safe fallback. Fixed
+    address (127.0.0.1) and the server's own port — never derived from user
+    input, so no SSRF surface. Returns a FetchResult shaped like safe_fetch.
+    """
+    port = _internal_port()
+    target = path or "/"
+    if query:
+        target += "?" + query
+    conn = None
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
+        conn.request("GET", target, headers={"Host": f"127.0.0.1:{port}",
+                                             "User-Agent": HEADERS["User-Agent"],
+                                             "Accept": HEADERS["Accept"]})
+        res = conn.getresponse()
+        body = res.read(2_000_000 + 1)
+    except Exception:
+        return None
+    finally:
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:
+            pass
+    if res.status != 200 or len(body) > 2_000_000:
+        return None
+    return FetchResult(status=200, headers={}, body=body, redirect_chain=[],
+                       resolved_ips=["127.0.0.1"], final_url=f"https://{domain}{target}")
+
+
+def fetch_page(url, timeout):
+    """Public fetch first; loopback fallback when scanning our own host."""
+    try:
+        res = safe_fetch(url, headers=HEADERS, timeout=timeout)
+    except Exception:
+        res = None
+    if res is not None and res.status == 200:
+        return res
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower().removeprefix("www.")
+    if host and host in _own_hosts():
+        return internal_fetch(parts.hostname, parts.path or "/", parts.query, timeout)
+    return None
 # Calibration knobs: what "recent" and "regular" mean for a marketing blog.
 RECENT_DAYS = 60
 MAX_PARALLEL = 8  # concurrent requests per scan to the scanned site
@@ -84,11 +158,8 @@ def page_preview(html, base):
 
 def fetch_preview(domain, timeout=8):
     """Quick home-page fetch for the loading screen; None if the site is slow or unreachable."""
-    try:
-        res = safe_fetch(f"https://{domain}/", headers=HEADERS, timeout=timeout)
-    except Exception:
-        return None
-    if res.status != 200:
+    res = fetch_page(f"https://{domain}/", timeout)
+    if res is None or res.status != 200:
         return None
     return page_preview(res.body.decode("utf-8", errors="replace"), res.final_url or f"https://{domain}/")
 
@@ -216,11 +287,8 @@ class GrowthAdapter(Adapter):
         return "ok"
 
     def get(self, url):
-        try:
-            res = safe_fetch(url, headers=HEADERS, timeout=self.timeout)
-        except Exception:
-            return None
-        return res if res.status == 200 else None
+        res = fetch_page(url, self.timeout)
+        return res if res is not None and res.status == 200 else None
 
     def text(self, res):
         return res.body.decode("utf-8", errors="replace")
@@ -279,6 +347,34 @@ class GrowthAdapter(Adapter):
         prefix = blog_path.lower() + "/" if blog_path else "/"
         return [d for loc, mod in rows if urlsplit(loc).path.lower().startswith(prefix) and (d := parse_date(mod))]
 
+    @staticmethod
+    def _checks_to_records(raw: dict, job_id: str, source_id: str, observed_at: str) -> list:
+        """Flatten the nested build_checks dict into CheckRecord objects."""
+        status_map = {"pass": "PASS", "fail": "FAIL", "neutral": "UNKNOWN"}
+        records = []
+        for group_key, group in (raw.get("checks") or {}).items():
+            if not isinstance(group, dict):
+                continue
+            for check_id, check in group.items():
+                if not isinstance(check, dict) or "status" not in check:
+                    continue
+                records.append(CheckRecord(
+                    job_id=job_id,
+                    source_id=source_id,
+                    native_check_id=f"{group_key}.{check_id}",
+                    canonical_check_id=None,
+                    status=status_map.get(check["status"], "UNKNOWN"),
+                    evidence=json.dumps(check),
+                    observed_at=observed_at,
+                ))
+        return records
+
     async def scan(self, domain: str, job_id: str) -> AdapterResult:
-        raw = await asyncio.get_running_loop().run_in_executor(None, self.run, domain)
-        return AdapterResult(self.source_id, "completed", json.dumps(raw), [])
+        try:
+            raw = await asyncio.get_running_loop().run_in_executor(None, self.run, domain)
+        except Exception as exc:
+            return AdapterResult(self.source_id, "failed", None, [], str(exc))
+        raw_json = json.dumps(raw)
+        observed_at = raw.get("scannedAt", datetime.now(timezone.utc).isoformat())
+        checks = self._checks_to_records(raw, job_id, self.source_id, observed_at)
+        return AdapterResult(self.source_id, "completed", raw_json, checks)

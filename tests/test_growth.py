@@ -1,8 +1,12 @@
 """Marketing playbook checker: parsing and thresholds, no network."""
 from datetime import datetime, timedelta, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import os
+import threading
 import unittest
+from unittest.mock import patch
 
-from app.adapters.growth import page_preview, activity, build_checks, feed_dates, find_blog, parse_links, sitemap_entries, social_profiles
+from app.adapters.growth import page_preview, activity, build_checks, feed_dates, find_blog, parse_links, sitemap_entries, social_profiles, fetch_page
 from app.reporting import build_report
 
 NOW = datetime(2026, 10, 10, tzinfo=timezone.utc)
@@ -60,6 +64,46 @@ class GrowthParsingTests(unittest.TestCase):
         preview = page_preview(html, HOME)
         self.assertEqual((preview["title"], preview["description"], preview["image"]), ("Acme", "We sell things", "https://example.com/og.png"))
         self.assertIsNone(preview["icon"])  # plain-http icon is dropped
+
+
+class OwnHostFallbackTests(unittest.TestCase):
+    """Public egress'e kapalı kendi sitemiz loopback üzerinden okunabilmeli."""
+
+    @staticmethod
+    def _serve(body):
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                payload = body.encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+            def log_message(self, *args):
+                pass
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        return server
+
+    def test_unreachable_own_host_falls_back_to_loopback(self):
+        server = self._serve("<html><head><title>Own</title></head></html>")
+        try:
+            env = {"PORT": str(server.server_port), "ALLOWED_HOSTS": "own.test",
+                   "PICKABLE_PUBLIC_URL": "https://own.test", "RENDER_EXTERNAL_HOSTNAME": ""}
+            with patch.dict(os.environ, env, clear=False):
+                res = fetch_page("https://own.test/", timeout=8)
+            self.assertIsNotNone(res)
+            self.assertEqual(res.status, 200)
+            self.assertEqual(res.final_url, "https://own.test/")
+            self.assertIn(b"Own", res.body)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_foreign_unreachable_host_stays_unreachable(self):
+        with patch.dict(os.environ, {"ALLOWED_HOSTS": "", "PICKABLE_PUBLIC_URL": "",
+                                     "RENDER_EXTERNAL_HOSTNAME": ""}, clear=False):
+            self.assertIsNone(fetch_page("https://nonexistent-xyz123.invalid/", timeout=5))
 
 
 if __name__ == "__main__":
