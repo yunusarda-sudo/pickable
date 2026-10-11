@@ -225,3 +225,17 @@ test('empty report overview remains unmeasured and handles missing checks safely
       assert.equal(model.actions.length, 0);
   }
 });
+
+
+test('cached reports and source disagreements are disclosed in the report', () => {
+  const ui = setup(() => ({}));
+  const value = report();
+  value.sources = [{id:'ora', status:'completed', served_from_cache:true, result_age_seconds:12698}];
+  value.checks = [{check_id:'discovery.sitemap', title:'Sitemap', category:'discovery',
+    scoring_status:'PASS', scoring_source:'cloudflare', sources:{}, source_disagreement:true}];
+  ui.renderReport(value);
+  assert.match(ui.get('ora-detail').textContent, /Cached report.*212 minutes old when received/);
+  assert.match(ui.get('report-summary').textContent, /1 source disagreement/);
+  assert.match(ui.get('report-summary').textContent, /Ora returned cached results/);
+  assert.match(ui.get('report-summary').textContent, /bookings and payments are not verified/);
+});

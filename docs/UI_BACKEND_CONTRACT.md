@@ -32,8 +32,20 @@ report = build_report("randevuo.com.tr", {
 ## Scoring
 
 - The mapping has 7 canonical checks. Ora and Cloudflare (isitagentready.com) run in parallel.
-- `scoring_status` / `scoring_source`: Ora's result when it is a definitive PASS/FAIL; otherwise
-  Cloudflare's, if definitive (fallback). Otherwise the check is unscored. llms.txt is Ora-only.
+- `mapping_version`: `2026-10-11.1`. `scoring_status` / `scoring_source` select the newest comparable
+  PASS/FAIL from completed, error-free runs. Ora breaks ties or missing timestamps; cached results with
+  unresolved times cannot override dated evidence. With no eligible definitive result the check is
+  unscored. llms.txt is Ora-only.
+- Observation time uses provider `scannedAt`; cached reports without it derive the time from receipt
+  time minus a finite, nonnegative `resultAgeSeconds`. If that is unavailable, cache time is unknown;
+  uncached reports can use receipt time. Report `scanned_at` is report creation time.
+- `content.markdown` requires content negotiation and `Vary: Accept`. Cloudflare's narrower check
+  cannot score this full requirement (`scope_difference`). A newer dated Cloudflare PASS against a
+  dated cached Ora FAIL yields UNKNOWN with no scoring source, pending a full recheck.
+- `source_disagreement` flags conflicting eligible comparable results. Source summaries expose
+  `observed_at`, `served_from_cache` and `result_age_seconds`; the UI discloses disagreements and cache
+  use. Source observations preserve native evidence even when excluded from scoring. Error-bearing or
+  non-completed runs never score. Cloudflare provider errors or responses without valid checks fail the run.
 - `combined_status`: the scoring status when definitive, else UNKNOWN.
 - Only PASS+FAIL count in the denominator; warnings, UNKNOWN and N/A are excluded. Unmeasured layers are null.
 - Layers: discoverability 20, readability 25, usability 35 (relative weights). The total and coverage
@@ -41,6 +53,7 @@ report = build_report("randevuo.com.tr", {
 - `score.coverage`: weighted coverage of definitive measurements. `score.rubric_version`: pickable-0.2.
 - Raw provider statuses, scores and recommendation order are preserved. `source_specific` keeps all
   unmapped findings. The UI renders provider text with `textContent` only.
+- Findings are source-reported; functional sign-in, bookings and payments are not verified.
 
 ## Marketing playbook
 

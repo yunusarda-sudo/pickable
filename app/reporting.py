@@ -1,8 +1,9 @@
 """Versioned, conservative mappings; native evidence is never rewritten."""
 from datetime import datetime, timezone
 import json
+import math
 
-SOURCES = ("ora", "cloudflare")  # scoring preference order: Cloudflare fills checks Ora leaves undecided
+SOURCES = ("ora", "cloudflare")  # tie-break priority; newer comparable observations win
 SOURCE_NAMES = {"ora": "Ora", "cloudflare": "Cloudflare"}
 WEIGHTS = {"discovery": 20, "content": 25, "usability": 35}  # totals are rescaled to /100
 LAYER_NAMES = {"discovery": "Discoverability", "content": "Readability", "usability": "Usability"}
@@ -42,6 +43,43 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
+def timestamp(value):
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed.timestamp() if parsed.tzinfo is not None else None
+    except (ValueError, OverflowError):
+        return None
+
+
+def observation_time(raw, received_at):
+    scanned_at = text_value(raw.get("scannedAt"))
+    if scanned_at:
+        return scanned_at
+    if raw.get("servedFromCache") is True:
+        age = number_value(raw.get("resultAgeSeconds"))
+        received = timestamp(received_at)
+        if age is not None and math.isfinite(age) and age >= 0 and received is not None:
+            try:
+                return datetime.fromtimestamp(received - age, timezone.utc).isoformat()
+            except (ValueError, OverflowError, OSError):
+                pass
+        return None
+    return text_value(received_at)
+
+
+def choose_source(candidates, observations):
+    if not candidates:
+        return None
+    times = {s: timestamp(observations[s]["observed_at"]) for s in candidates}
+    if any(t is not None for t in times.values()):
+        candidates = [s for s in candidates if times[s] is not None or not observations[s].get("cached")]
+    if all(t is not None for t in times.values()):
+        return max(candidates, key=lambda s: times[s])
+    return candidates[0]
+
+
 def report_from_job(job, source_runs, pending=()):
     sources = {}
     for run in source_runs:
@@ -56,11 +94,7 @@ def report_from_job(job, source_runs, pending=()):
                 raw, error = None, "The stored provider report could not be read as JSON."
         if raw is not None and not isinstance(raw, dict):
             raw, error = None, "The provider report is not a JSON object."
-        observed_at = None
-        if isinstance(raw, dict) and raw.get("scannedAt"):
-            observed_at = raw.get("scannedAt")
-        else:
-            observed_at = run.get("finished_at")
+        observed_at = observation_time(raw or {}, run.get("finished_at"))
         sources[source] = {"status": run.get("status", "unavailable"), "raw": raw,
                            "error": error, "observed_at": observed_at}
     return build_report(job["domain"], sources, pending)
@@ -90,7 +124,9 @@ def observation(cid, rows, envelope):
     raw = rows.get(cid)
     native = raw.get("status") if raw else None
     return {"source_check_id": cid, "status": NORMALIZED.get(native, "UNKNOWN") if isinstance(native, str) else "UNKNOWN", "native_status": native,
-            "raw": raw, "observed_at": envelope.get("observed_at"), "attribution": "source_reported"}
+            "raw": raw, "observed_at": envelope.get("observed_at"), "attribution": "source_reported",
+            "eligible": envelope.get("status") == "completed" and not envelope.get("error"),
+            "cached": (envelope.get("raw") or {}).get("servedFromCache") is True}
 
 
 def score_checks(checks, weights=WEIGHTS, layer_names=LAYER_NAMES):
@@ -130,17 +166,38 @@ def build_report(domain, sources, pending=()):
             if native_id:
                 observations[source] = observation(native_id, flat[source], envelopes[source])
                 mapped[source].add(native_id)
-        basis = next((s for s in SOURCES if s in observations and observations[s]["status"] in ("PASS", "FAIL")), None)
-        status = observations[basis]["status"] if basis else observations["ora"]["status"]
+        candidates = [s for s in SOURCES if s in observations and observations[s]["eligible"]
+                      and observations[s]["status"] in ("PASS", "FAIL")]
+        # Cloudflare checks negotiation only; it cannot prove the stricter Vary requirement.
+        scope_difference = cid == "content.markdown" and "cloudflare" in candidates
+        if scope_difference:
+            candidates.remove("cloudflare")
+        disagreement = len({observations[s]["status"] for s in candidates}) > 1
+        basis = choose_source(candidates, observations)
+        status = observations[basis]["status"] if basis else "UNKNOWN"
         reason = f"{SOURCE_NAMES[basis]} reported a definitive result." if basis else NO_EVIDENCE
-        if basis == "cloudflare":
-            reason += " Ora had no definitive result, so Cloudflare was used as fallback."
-        # Undecided until every source that outranks the basis (or every source, if none decided) has finished.
-        if any(s in pending and s in observations for s in (SOURCES[:SOURCES.index(basis)] if basis else SOURCES)):
-            status, basis, reason = "PENDING", None, "Waiting for a higher-priority source before deciding this check."
+        if len(candidates) > 1:
+            reason += " The newest dated comparable result is used; Ora breaks ties or missing timestamps."
+        elif basis == "cloudflare":
+            reason += " Ora had no eligible definitive result, so Cloudflare was used as fallback."
+        if disagreement:
+            reason += " Sources disagree; review both observation times and evidence."
+        if scope_difference:
+            reason += " Cloudflare does not verify Vary: Accept and cannot score this stricter check."
+            ora_time = timestamp(observations["ora"]["observed_at"])
+            cf_time = timestamp(observations["cloudflare"]["observed_at"])
+            if (basis == "ora" and status == "FAIL" and observations["cloudflare"]["status"] == "PASS"
+                    and (envelopes["ora"].get("raw") or {}).get("servedFromCache") is True
+                    and ora_time is not None and cf_time is not None and cf_time > ora_time):
+                status, basis = "UNKNOWN", None
+                reason += " The cached Ora failure predates newer Markdown evidence; recheck the full requirement."
+        # A pending source may return a more recent observation, regardless of tie-break priority.
+        if any(s in pending for s in observations):
+            status, basis, reason = "PENDING", None, "Waiting for source observations before deciding this check."
         checks.append({"check_id": cid, "title": title, "category": category,
                        "measurement_definition": definition, "sources": observations, "combined_status": status if basis else "UNKNOWN",
-                       "scoring_status": status, "scoring_source": basis, "reason": reason})
+                       "scoring_status": status, "scoring_source": basis, "reason": reason,
+                       "source_disagreement": disagreement, "scope_difference": scope_difference})
     specific = [{"source": s, "source_check_id": cid, "raw": raw} for s, rows in flat.items() for cid, raw in rows.items() if cid not in mapped[s]]
     summaries = []
     for source, envelope in envelopes.items():
@@ -149,11 +206,13 @@ def build_report(domain, sources, pending=()):
                           "score": number_value(raw.get("score")), "grade": text_value(raw.get("grade")), "level": number_value(raw.get("level")), "level_name": text_value(raw.get("levelName")),
                           "observed_at": envelope.get("observed_at"),
                           "contract_version": text_value(raw.get("contractVersion")), "check_count": len(flat[source]),
+                          "served_from_cache": raw.get("servedFromCache") is True,
+                          "result_age_seconds": number_value(raw.get("resultAgeSeconds")),
                           "attribution": "source_reported", "analysis_status": text_value(raw.get("analysisStatus"))})
     recommendations = (envelopes["ora"].get("raw") or {}).get("topFixes")
     if not isinstance(recommendations, list):
         recommendations = []
-    return {"schema_version": "0.1", "mapping_version": "2026-10-10.2", "domain": domain, "scanned_at": now(),
+    return {"schema_version": "0.1", "mapping_version": "2026-10-11.1", "domain": domain, "scanned_at": now(),
             "sources": summaries, "checks": checks, "score": {**score_checks(checks), "final": not any(c["scoring_status"] == "PENDING" for c in checks)},
             "source_specific": specific, "recommendations": recommendations,
             "marketing": build_marketing(sources.get("growth"), "growth" in pending)}
@@ -166,7 +225,7 @@ def build_marketing(envelope, pending):
     checks = []
     for cid, title, category, native_id, definition in MARKETING_DEFINITIONS:
         obs = observation(native_id, rows, envelope)
-        status = "PENDING" if pending else obs["status"]
+        status = "PENDING" if pending else obs["status"] if obs["eligible"] else "UNKNOWN"
         scored = status in ("PASS", "FAIL")
         checks.append({"check_id": cid, "title": title, "category": category, "measurement_definition": definition,
                        "sources": {"growth": obs}, "scoring_status": status, "scoring_source": "growth" if scored else None,

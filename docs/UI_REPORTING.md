@@ -41,8 +41,16 @@ UNKNOWN, warning and N/A results are excluded from the denominator. Unmeasured l
 coverage is shown separately. The checks cover only part of agent readiness, which is why the UI calls
 it a **preliminary score**.
 
-Each check uses Ora's definitive result; when Ora has none, Cloudflare's definitive result is used as
-a fallback. Every row shows which source it was scored from. No independent verification is claimed.
+Mapping `2026-10-11.1` uses the newest comparable definitive result from completed, error-free source
+runs. Ora breaks ties or missing timestamps; cached results with unresolved observation times do not
+override dated evidence. Cached results without `scannedAt` use receipt time minus a valid
+`resultAgeSeconds`, when available. Every row identifies its scoring source and preserves both observations.
+
+The Markdown check requires content negotiation and `Vary: Accept`. Cloudflare measures a narrower
+requirement and cannot score this full check. A newer Cloudflare Markdown PASS against a dated cached
+Ora FAIL makes it UNKNOWN pending a full recheck. Source disagreements and cached results are disclosed
+in the report. Findings do not verify working sign-in, bookings or payments; no independent verification
+is claimed.
 
 ## Evidence preservation
 
