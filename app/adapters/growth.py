@@ -37,7 +37,10 @@ def _own_hosts():
     hosts = set()
     extra = os.environ.get("ALLOWED_HOSTS", "") + "," + os.environ.get("RENDER_EXTERNAL_HOSTNAME", "")
     for host in extra.split(","):
-        host = host.strip().lower().removeprefix("www.")
+        host = host.strip().lower()
+        if host.count(":") == 1:  # tolerate host:port entries
+            host = host.split(":")[0]
+        host = host.removeprefix("www.")
         if host:
             hosts.add(host)
     public = urlsplit(os.environ.get("PICKABLE_PUBLIC_URL", "")).hostname

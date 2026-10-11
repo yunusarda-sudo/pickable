@@ -183,5 +183,27 @@ def row_status(report, check_id):
     return next(c["scoring_status"] for c in report["checks"] if c["check_id"] == check_id)
 
 
+class FixturePinTests(unittest.TestCase):
+    """End-to-end scoring is a pure function of raw provider payloads.
+
+    Stored CheckRecord rows (e.g. growth's check-flattening) never feed the
+    score; if they ever do, these pins fail.
+    """
+
+    def test_fixture_scores_are_stable(self):
+        from ui_fixture import fixture_runs
+        report = report_from_job({"domain": "example.com"}, fixture_runs())
+        self.assertEqual(report["score"]["total"], 43.8)
+        self.assertEqual(report["score"]["coverage"], 69.8)
+        self.assertEqual(report["marketing"]["score"]["total"], 80.0)
+        self.assertEqual(
+            [(c["check_id"], c["scoring_status"]) for c in report["checks"]],
+            [("discovery.sitemap", "PASS"), ("discovery.link_headers", "FAIL"),
+             ("content.llms_txt", "PASS"), ("content.markdown", "UNKNOWN"),
+             ("auth.oauth_metadata", "FAIL"), ("auth.protected_resource", "UNKNOWN"),
+             ("integration.mcp_card", "FAIL")],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

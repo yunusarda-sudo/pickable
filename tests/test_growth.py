@@ -105,6 +105,39 @@ class OwnHostFallbackTests(unittest.TestCase):
                                      "RENDER_EXTERNAL_HOSTNAME": ""}, clear=False):
             self.assertIsNone(fetch_page("https://nonexistent-xyz123.invalid/", timeout=5))
 
+    def test_redirect_is_not_followed_to_another_host(self):
+        """Loopback yanıtı 301 bile olsa Location takip edilmez (SSRF zinciri yok)."""
+        class Redirect(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(301)
+                self.send_header("Location", "http://169.254.169.254/latest/meta-data/")
+                self.end_headers()
+            def log_message(self, *args):
+                pass
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Redirect)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            env = {"PORT": str(server.server_port), "ALLOWED_HOSTS": "own.test",
+                   "PICKABLE_PUBLIC_URL": "https://own.test", "RENDER_EXTERNAL_HOSTNAME": ""}
+            with patch.dict(os.environ, env, clear=False):
+                self.assertIsNone(fetch_page("https://own.test/", timeout=8))
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_host_with_port_entry_still_matches(self):
+        server = self._serve("<html><head><title>Own</title></head></html>")
+        try:
+            env = {"PORT": str(server.server_port), "ALLOWED_HOSTS": "own.test:443",
+                   "PICKABLE_PUBLIC_URL": "", "RENDER_EXTERNAL_HOSTNAME": ""}
+            with patch.dict(os.environ, env, clear=False):
+                res = fetch_page("https://www.own.test/", timeout=8)
+            self.assertIsNotNone(res)
+            self.assertEqual(res.final_url, "https://www.own.test/")
+        finally:
+            server.shutdown()
+            server.server_close()
+
 
 if __name__ == "__main__":
     unittest.main()
