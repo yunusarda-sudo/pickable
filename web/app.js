@@ -63,6 +63,7 @@ function updateSources(sources = []) {
     if (scalar(source?.score)) parts.push(`Source score: ${scalar(source.score)}/100${scalar(source.grade) ? " · " + scalar(source.grade) : ""}`);
     if (scalar(source?.level)) parts.push(`Source level: ${scalar(source.level)}/5`);
     if (scalar(source?.check_count)) parts.push(`${scalar(source.check_count)} checks`);
+    if (source?.served_from_cache === true) parts.push(`Cached report${typeof source.result_age_seconds === "number" && source.result_age_seconds >= 0 ? ` · ${Math.round(source.result_age_seconds / 60)} minutes old when received` : ""}`);
     if (scalar(source?.error)) parts.push(scalar(source.error));
     if (source?.observed_at) parts.push(formatTime(source.observed_at));
     $(id + "-detail").textContent = parts.join(" · ") || (["running", "pending"].includes(status) ? "Waiting for source report…" : "No results yet");
@@ -133,7 +134,9 @@ function modelReport(report) {
 function reportSummary(report) {
   const model = modelReport(report);
   if (report?.score?.total === null || report?.score?.total === undefined) return "Not enough definitive measurements for a preliminary score. See source details below.";
-  return `${model.passed} checks passed, ${model.failed} reported missing. ${model.uncertain} were not scored as a definitive PASS/FAIL. Findings are based on source reports.`;
+  const conflicts = (Array.isArray(report.checks) ? report.checks : []).filter(c => c?.source_disagreement === true).length;
+  const cached = (Array.isArray(report.sources) ? report.sources : []).filter(s => s?.served_from_cache === true).map(s => sourceName(s.id));
+  return `${model.passed} checks passed, ${model.failed} reported missing. ${model.uncertain} were not scored as a definitive PASS/FAIL. Findings are based on source reports; working sign-in, bookings and payments are not verified.${conflicts ? ` ${conflicts} source disagreement(s); the newest comparable observations are used.` : ""}${cached.length ? ` ${cached.join(", ")} returned cached results; check source observation times.` : ""}`;
 }
 function evidenceButton(check, label = "View source evidence ↗") {
   const button = element("button", "evidence-link", label);
@@ -171,11 +174,15 @@ function renderReportExperience(report) {
       const row = element("details", "finding-row");
       const summary = element("summary");
       summary.append(badge(check.scoring_status), element("span", "finding-title", check.title), element("span", "finding-arrow", "+")); row.append(summary);
+      if (check.source_disagreement === true) summary.append(element("span", "pill WARNING", "Sources differ"));
+      if (check.scope_difference === true) summary.append(element("span", "pill WARNING", "Different criteria"));
       const body = element("div", "finding-body");
       body.append(element("p", "finding-purpose", checkGuidance[check.check_id]?.[0] || check.measurement_definition));
       const raw = check.sources?.[check.scoring_source || "ora"]?.raw || {};
       const finding = scalar(raw.message) || scalar(raw.details);
       if (finding) body.append(element("p", "finding-context", finding));
+      body.append(element("p", "finding-context", check.reason));
+      if (check.scoring_source) body.append(element("p", "finding-context", `${sourceName(check.scoring_source)} · Observed ${formatTime(check.sources?.[check.scoring_source]?.observed_at)}`));
       body.append(evidenceButton(check));
       row.append(body); section.append(row);
     }
