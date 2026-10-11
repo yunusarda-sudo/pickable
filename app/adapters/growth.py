@@ -92,10 +92,11 @@ def internal_fetch(domain, path="/", query="", timeout=8):
                        resolved_ips=["127.0.0.1"], final_url=f"https://{domain}{target}")
 
 
-def fetch_page(url, timeout):
+def fetch_page(url, timeout, max_redirects=5, max_bytes=10_000_000):
     """Public fetch first; loopback fallback when scanning our own host."""
     try:
-        res = safe_fetch(url, headers=HEADERS, timeout=timeout)
+        res = safe_fetch(url, headers=HEADERS, timeout=timeout,
+                         max_redirects=max_redirects, max_bytes=max_bytes)
     except Exception:
         res = None
     if res is not None and res.status == 200:

@@ -318,6 +318,38 @@ class IntelligenceContractTests(unittest.TestCase):
         self.assertNotIn("prompt", public["report"])
         self.assertNotIn("raw_html", public["report"])
         self.assertNotIn("body", public["report"]["sources"][0])
+        for key in ("model", "usage", "finish_reason", "error"):
+            self.assertNotIn(key, public)
+
+    def test_own_host_evidence_falls_back_to_loopback(self):
+        import os
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from app.intelligence import fetch_evidence
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                payload = b"<html><head><title>Own</title></head><body><p>Own product.</p></body></html>"
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+            def log_message(self, *args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            env = {"PORT": str(server.server_port), "ALLOWED_HOSTS": "own.test",
+                   "PICKABLE_PUBLIC_URL": "https://own.test", "RENDER_EXTERNAL_HOSTNAME": ""}
+            with patch.dict(os.environ, env, clear=False):
+                result = fetch_evidence("https://own.test/", extra_pages=0)
+            self.assertEqual(result["pages"][0]["url"], "https://own.test/")
+            self.assertEqual(result["pages"][0]["title"], "Own")
+        finally:
+            server.shutdown()
+            server.server_close()
 
 
 if __name__ == "__main__":

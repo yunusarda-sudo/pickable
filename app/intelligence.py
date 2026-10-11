@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from app.safe_fetch import safe_fetch
+from app.adapters.growth import fetch_page as own_aware_fetch
 from app.security import public_addresses, validate_url
 
 SKILL_PATH = Path(__file__).resolve().parent / "skills" / "saas-site-intelligence.md"
@@ -576,7 +577,12 @@ class IntelligenceProvider:
 
 
 def _fetch_page(url, ref, timeout=12):
-    response = safe_fetch(url, timeout=timeout, max_redirects=4, max_bytes=1_000_000, headers=FETCH_HEADERS)
+    # Own-host targets reuse the growth adapter's loopback fallback: hosts
+    # that cannot reach their own public URL would otherwise fail every
+    # self-scan here. Foreign URLs behave exactly as before.
+    response = own_aware_fetch(url, timeout, max_redirects=4, max_bytes=1_000_000)
+    if response is None:
+        raise RuntimeError(f"{ref} is unreachable.")
     if response.status < 200 or response.status >= 400:
         raise RuntimeError(f"{ref} returned HTTP {response.status}.")
     return extract_page_evidence(response.final_url or url, response.status, response.headers, response.body, ref=ref)
