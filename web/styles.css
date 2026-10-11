@@ -208,6 +208,11 @@ body[data-mode="agent"] .mode-normal,body:not([data-mode="agent"]) .mode-agent{d
 .check-layout{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;align-items:start}
 .check-layout .finding-category{background:#fbfdfa;border:1px solid #dde5dd;border-radius:18px;box-shadow:0 12px 32px #1e30240a;padding:18px;margin-top:0}
 .check-layout .finding-category .category-heading{border-bottom:1px solid #dde5dd;padding:6px 0 14px}
+/* Agent findings have no .category-number, so the inherited 28px/1fr grid
+   would cram the title into 28px and overlap the measured-count line. */
+.check-layout .finding-category .category-heading>div{display:block}
+.check-layout .finding-category .category-heading h3{margin:0 0 4px}
+.check-layout .finding-category .category-heading p{margin:0}
 .check-layout .finding-row{background:transparent;border:0;border-top:1px solid #edf0ed;border-radius:0;padding:0;margin:0}
 .check-layout .finding-row:first-of-type{border-top:0}
 .intelligence-section{padding-top:51px;scroll-margin-top:18px}

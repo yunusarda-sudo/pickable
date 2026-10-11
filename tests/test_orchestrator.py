@@ -1,9 +1,11 @@
 import unittest
 import asyncio
+import http.client
 import time
 from unittest.mock import MagicMock
 from app.adapters.base import Adapter, CheckRecord, AdapterResult
 from app.orchestrator import Orchestrator
+from app.safe_fetch import TimeoutError as SafeFetchTimeout
 from app.storage import Storage
 import tempfile
 import os
@@ -128,6 +130,114 @@ class TestOrchestrator(unittest.IsolatedAsyncioTestCase):
         runs = {r["source_id"]: r for r in self.storage.get_source_runs(job_id)}
         self.assertEqual(runs["ora"]["status"], "failed")
         self.assertEqual(runs["mock_b"]["status"], "timeout")
+
+
+class FlakyAdapter(Adapter):
+    """Emits queued failures (exceptions or AdapterResults) before succeeding."""
+
+    source_id = "flaky"
+
+    def __init__(self, failures):
+        self.failures = list(failures)
+        self.calls = 0
+
+    async def scan(self, domain: str, job_id: str) -> AdapterResult:
+        self.calls += 1
+        if self.failures:
+            item = self.failures.pop(0)
+            if isinstance(item, Exception):
+                raise item
+            return item
+        return AdapterResult(
+            source_id=self.source_id,
+            status="completed",
+            raw_report='{"ok": true}',
+            checks=[],
+        )
+
+    async def health(self) -> str:
+        return "ok"
+
+
+class TestOrchestratorRetry(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db_path = os.path.join(self.temp_dir.name, "test_orch_retry.db")
+        self.storage = Storage(self.db_path)
+
+    def tearDown(self):
+        self.storage.close()
+        self.temp_dir.cleanup()
+
+    def make_orch(self, adapter):
+        return Orchestrator(adapters=[adapter], storage=self.storage,
+                            max_attempts=2, retry_delay=0.01)
+
+    async def test_transient_timeout_then_success(self):
+        """safe_fetch timeout'u bir kez retry edilir, ikinci deneme tutar"""
+        adapter = FlakyAdapter([SafeFetchTimeout("Request timed out")])
+        orch = self.make_orch(adapter)
+        job_id = await orch.run_scan("test.com")
+
+        runs = {r["source_id"]: r for r in self.storage.get_source_runs(job_id)}
+        self.assertEqual(adapter.calls, 2)
+        self.assertEqual(runs["flaky"]["status"], "completed")
+
+    async def test_transient_provider_error_then_success(self):
+        """HTTP 502 ile donen failed sonucu retry edilir"""
+        failed = AdapterResult(source_id="flaky", status="failed",
+                               raw_report="{}", checks=[], error="Cloudflare API returned HTTP 502")
+        adapter = FlakyAdapter([failed])
+        orch = self.make_orch(adapter)
+        job_id = await orch.run_scan("test.com")
+
+        runs = {r["source_id"]: r for r in self.storage.get_source_runs(job_id)}
+        self.assertEqual(adapter.calls, 2)
+        self.assertEqual(runs["flaky"]["status"], "completed")
+
+    async def test_permanent_failure_is_not_retried(self):
+        """Kalıcı hata (bot engeli/403) retry edilmeden failed olur"""
+        failed = AdapterResult(source_id="flaky", status="failed",
+                               raw_report="{}", checks=[], error="Site returned HTTP 403")
+        adapter = FlakyAdapter([failed])
+        orch = self.make_orch(adapter)
+        job_id = await orch.run_scan("test.com")
+
+        runs = {r["source_id"]: r for r in self.storage.get_source_runs(job_id)}
+        self.assertEqual(adapter.calls, 1)
+        self.assertEqual(runs["flaky"]["status"], "failed")
+
+    async def test_persistent_timeout_stays_timeout(self):
+        """Sürekli timeout atan adapter sonunda timeout olarak kaydedilir"""
+        adapter = FlakyAdapter([SafeFetchTimeout("t1"), SafeFetchTimeout("t2"), SafeFetchTimeout("t3")])
+        orch = self.make_orch(adapter)
+        job_id = await orch.run_scan("test.com")
+
+        runs = {r["source_id"]: r for r in self.storage.get_source_runs(job_id)}
+        self.assertEqual(adapter.calls, 2)
+        self.assertEqual(runs["flaky"]["status"], "timeout")
+
+    async def test_connection_blip_then_success(self):
+        """Bağlantı hatası retry edilir"""
+        adapter = FlakyAdapter([ConnectionError("reset by peer")])
+        orch = self.make_orch(adapter)
+        job_id = await orch.run_scan("test.com")
+
+        runs = {r["source_id"]: r for r in self.storage.get_source_runs(job_id)}
+        self.assertEqual(adapter.calls, 2)
+        self.assertEqual(runs["flaky"]["status"], "completed")
+
+    async def test_timeout_message_is_human_readable(self):
+        """Timeout mesajı 'TimeoutError: Request timed out: timed out' diye sızmaz"""
+        adapter = FlakyAdapter([SafeFetchTimeout("Request timed out: timed out"),
+                                SafeFetchTimeout("Request timed out: timed out")])
+        orch = self.make_orch(adapter)
+        job_id = await orch.run_scan("test.com")
+
+        runs = {r["source_id"]: r for r in self.storage.get_source_runs(job_id)}
+        self.assertEqual(runs["flaky"]["status"], "timeout")
+        self.assertNotIn("TimeoutError", runs["flaky"]["error"])
+        self.assertIn("took too long", runs["flaky"]["error"])
 
 
 if __name__ == "__main__":
