@@ -580,7 +580,10 @@ def _fetch_page(url, ref, timeout=12):
     # Own-host targets reuse the growth adapter's loopback fallback: hosts
     # that cannot reach their own public URL would otherwise fail every
     # self-scan here. Foreign URLs behave exactly as before.
-    response = own_aware_fetch(url, timeout, max_redirects=4, max_bytes=1_000_000)
+    # Modern SaaS homepages often exceed 1 MB of HTML; the cap must stay
+    # well above that (evidence parsing needs the full body) while still
+    # bounding worker memory. Anything larger fails explicitly, never silently.
+    response = own_aware_fetch(url, timeout, max_redirects=4, max_bytes=3_000_000)
     if response is None:
         raise RuntimeError(f"{ref} is unreachable.")
     if response.status < 200 or response.status >= 400:
