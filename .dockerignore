@@ -1,6 +1,13 @@
+.git
 .env
 .env.*
-data/
-.git/
-__pycache__/
+data
+__pycache__
+**/__pycache__
 *.pyc
+.venv
+venv
+.coverage
+htmlcov
+.DS_Store
+node_modules

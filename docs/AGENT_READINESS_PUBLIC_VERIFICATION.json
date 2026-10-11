@@ -1,0 +1,596 @@
+{
+  "checks": [
+    {
+      "check": "discovery /auth.md",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/auth.md",
+      "status": 404
+    },
+    {
+      "check": "discovery /pricing.md",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/pricing.md",
+      "status": 404
+    },
+    {
+      "check": "discovery /index.md",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/index.md",
+      "status": 404
+    },
+    {
+      "check": "discovery /about.md",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/about.md",
+      "status": 404
+    },
+    {
+      "check": "discovery /api.md",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/api.md",
+      "status": 404
+    },
+    {
+      "check": "discovery /docs.md",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/docs.md",
+      "status": 404
+    },
+    {
+      "check": "discovery /skill.md",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/skill.md",
+      "status": 404
+    },
+    {
+      "check": "discovery /docs/llms.txt",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/docs/llms.txt",
+      "status": 404
+    },
+    {
+      "check": "discovery /api/llms.txt",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/api/llms.txt",
+      "status": 404
+    },
+    {
+      "check": "discovery /mcp/server-card",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/mcp/server-card",
+      "status": 404
+    },
+    {
+      "check": "discovery /.well-known/agent.json",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/.well-known/agent.json",
+      "status": 404
+    },
+    {
+      "check": "discovery /.well-known/ard.json",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/.well-known/ard.json",
+      "status": 404
+    },
+    {
+      "check": "discovery /.well-known/ai-catalog.json",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/.well-known/ai-catalog.json",
+      "status": 404
+    },
+    {
+      "check": "discovery /.well-known/api-catalog",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/.well-known/api-catalog",
+      "status": 404
+    },
+    {
+      "check": "discovery /.well-known/agent-skills/index.json",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/.well-known/agent-skills/index.json",
+      "status": 404
+    },
+    {
+      "check": "legacy plugin manifest omitted",
+      "content_type": "application/json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/ai-plugin.json",
+      "status": 404
+    },
+    {
+      "check": "legacy plugin manifest omission is explicit",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/ai-plugin.json",
+      "status": 404
+    },
+    {
+      "check": "markdown suffix /index.md",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/index.md",
+      "status": 404
+    },
+    {
+      "check": "markdown representation /index.md",
+      "content_type": "application/json",
+      "detail": "expected nonempty Markdown with Vary: Accept",
+      "method": "GET",
+      "ok": false,
+      "path": "/index.md",
+      "status": 404
+    },
+    {
+      "check": "markdown suffix /auth.md",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/auth.md",
+      "status": 404
+    },
+    {
+      "check": "markdown representation /auth.md",
+      "content_type": "application/json",
+      "detail": "expected nonempty Markdown with Vary: Accept",
+      "method": "GET",
+      "ok": false,
+      "path": "/auth.md",
+      "status": 404
+    },
+    {
+      "check": "markdown suffix /pricing.md",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/pricing.md",
+      "status": 404
+    },
+    {
+      "check": "markdown representation /pricing.md",
+      "content_type": "application/json",
+      "detail": "expected nonempty Markdown with Vary: Accept",
+      "method": "GET",
+      "ok": false,
+      "path": "/pricing.md",
+      "status": 404
+    },
+    {
+      "check": "markdown suffix /index.md",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/index.md",
+      "status": 404
+    },
+    {
+      "check": "markdown representation /index.md",
+      "content_type": "application/json",
+      "detail": "expected nonempty Markdown with Vary: Accept",
+      "method": "GET",
+      "ok": false,
+      "path": "/index.md",
+      "status": 404
+    },
+    {
+      "check": "markdown suffix /about.md",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/about.md",
+      "status": 404
+    },
+    {
+      "check": "markdown representation /about.md",
+      "content_type": "application/json",
+      "detail": "expected nonempty Markdown with Vary: Accept",
+      "method": "GET",
+      "ok": false,
+      "path": "/about.md",
+      "status": 404
+    },
+    {
+      "check": "markdown suffix /api.md",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/api.md",
+      "status": 404
+    },
+    {
+      "check": "markdown representation /api.md",
+      "content_type": "application/json",
+      "detail": "expected nonempty Markdown with Vary: Accept",
+      "method": "GET",
+      "ok": false,
+      "path": "/api.md",
+      "status": 404
+    },
+    {
+      "check": "markdown suffix /docs.md",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/docs.md",
+      "status": 404
+    },
+    {
+      "check": "markdown representation /docs.md",
+      "content_type": "application/json",
+      "detail": "expected nonempty Markdown with Vary: Accept",
+      "method": "GET",
+      "ok": false,
+      "path": "/docs.md",
+      "status": 404
+    },
+    {
+      "check": "markdown suffix /skill.md",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/skill.md",
+      "status": 404
+    },
+    {
+      "check": "markdown representation /skill.md",
+      "content_type": "application/json",
+      "detail": "expected nonempty Markdown with Vary: Accept",
+      "method": "GET",
+      "ok": false,
+      "path": "/skill.md",
+      "status": 404
+    },
+    {
+      "check": "root agent markdown mode",
+      "content_type": "text/html",
+      "method": "GET",
+      "ok": true,
+      "path": "/?mode=agent",
+      "status": 200
+    },
+    {
+      "check": "root agent markdown mode",
+      "content_type": "text/html",
+      "detail": "expected nonempty Markdown with Vary: Accept",
+      "method": "GET",
+      "ok": false,
+      "path": "/?mode=agent",
+      "status": 200
+    },
+    {
+      "check": "XML sitemap",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/sitemap.xml",
+      "status": 404
+    },
+    {
+      "check": "homepage HTML",
+      "content_type": "text/html",
+      "method": "GET",
+      "ok": true,
+      "path": "/",
+      "status": 200
+    },
+    {
+      "check": "homepage includes valid JSON-LD",
+      "detail": "missing or invalid application/ld+json block",
+      "method": "GET",
+      "ok": false,
+      "path": "/"
+    },
+    {
+      "check": "homepage link /",
+      "content_type": "text/html",
+      "method": "GET",
+      "ok": true,
+      "path": "/",
+      "status": 200
+    },
+    {
+      "check": "homepage link /",
+      "method": "GET",
+      "ok": true,
+      "path": "/",
+      "status": 200
+    },
+    {
+      "check": "homepage link /app.js",
+      "content_type": "text/javascript",
+      "method": "GET",
+      "ok": true,
+      "path": "/app.js",
+      "status": 200
+    },
+    {
+      "check": "homepage link /app.js",
+      "method": "GET",
+      "ok": true,
+      "path": "/app.js",
+      "status": 200
+    },
+    {
+      "check": "homepage link /styles.css",
+      "content_type": "text/css",
+      "method": "GET",
+      "ok": true,
+      "path": "/styles.css",
+      "status": 200
+    },
+    {
+      "check": "homepage link /styles.css",
+      "method": "GET",
+      "ok": true,
+      "path": "/styles.css",
+      "status": 200
+    },
+    {
+      "check": "OpenAPI document",
+      "content_type": "application/json",
+      "detail": "Not found.",
+      "method": "GET",
+      "ok": false,
+      "path": "/openapi.json",
+      "status": 404
+    },
+    {
+      "check": "OpenAPI contract",
+      "detail": "API catalog did not resolve to an OpenAPI document",
+      "ok": false,
+      "path": "/.well-known/api-catalog"
+    },
+    {
+      "check": "HEAD /",
+      "content_type": "text/html",
+      "method": "HEAD",
+      "ok": false,
+      "path": "/",
+      "status": 501
+    },
+    {
+      "check": "HEAD metadata /",
+      "detail": "HEAD metadata differs from GET",
+      "method": "HEAD",
+      "ok": false,
+      "path": "/",
+      "status": 501
+    },
+    {
+      "check": "HEAD /index.md",
+      "content_type": "text/html",
+      "method": "HEAD",
+      "ok": false,
+      "path": "/index.md",
+      "status": 501
+    },
+    {
+      "check": "HEAD metadata /index.md",
+      "detail": "HEAD metadata differs from GET",
+      "method": "HEAD",
+      "ok": false,
+      "path": "/index.md",
+      "status": 501
+    },
+    {
+      "check": "HEAD /docs/llms.txt",
+      "content_type": "text/html",
+      "method": "HEAD",
+      "ok": false,
+      "path": "/docs/llms.txt",
+      "status": 501
+    },
+    {
+      "check": "HEAD metadata /docs/llms.txt",
+      "detail": "HEAD metadata differs from GET",
+      "method": "HEAD",
+      "ok": false,
+      "path": "/docs/llms.txt",
+      "status": 501
+    },
+    {
+      "check": "HEAD /.well-known/agent.json",
+      "content_type": "text/html",
+      "method": "HEAD",
+      "ok": false,
+      "path": "/.well-known/agent.json",
+      "status": 501
+    },
+    {
+      "check": "HEAD metadata /.well-known/agent.json",
+      "detail": "HEAD metadata differs from GET",
+      "method": "HEAD",
+      "ok": false,
+      "path": "/.well-known/agent.json",
+      "status": 501
+    },
+    {
+      "check": "HEAD /mcp/server-card",
+      "content_type": "text/html",
+      "method": "HEAD",
+      "ok": false,
+      "path": "/mcp/server-card",
+      "status": 501
+    },
+    {
+      "check": "HEAD metadata /mcp/server-card",
+      "detail": "HEAD metadata differs from GET",
+      "method": "HEAD",
+      "ok": false,
+      "path": "/mcp/server-card",
+      "status": 501
+    },
+    {
+      "check": "A2A unsupported",
+      "content_type": "application/json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/agent-card.json",
+      "status": 404
+    },
+    {
+      "check": "A2A is explicitly unsupported",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/agent-card.json",
+      "status": 404
+    },
+    {
+      "check": "MCP initialize",
+      "content_type": "application/json",
+      "detail": "Endpoint not found.",
+      "method": "POST",
+      "ok": false,
+      "path": "/mcp",
+      "status": 404
+    },
+    {
+      "check": "MCP sessionless initialize",
+      "detail": "initialize did not return a supported sessionless JSON-RPC result and version header",
+      "method": "POST",
+      "ok": false,
+      "path": "/mcp",
+      "status": 404
+    },
+    {
+      "check": "MCP initialized notification",
+      "content_type": "application/json",
+      "detail": "Endpoint not found.",
+      "method": "POST",
+      "ok": false,
+      "path": "/mcp",
+      "status": 404
+    },
+    {
+      "check": "MCP notification accepted without response",
+      "method": "POST",
+      "ok": false,
+      "path": "/mcp",
+      "status": 404
+    },
+    {
+      "check": "MCP ping",
+      "content_type": "application/json",
+      "detail": "Endpoint not found.",
+      "method": "POST",
+      "ok": false,
+      "path": "/mcp",
+      "status": 404
+    },
+    {
+      "check": "MCP ping",
+      "method": "POST",
+      "ok": false,
+      "path": "/mcp",
+      "status": 404
+    },
+    {
+      "check": "MCP tools/list",
+      "content_type": "application/json",
+      "detail": "Endpoint not found.",
+      "method": "POST",
+      "ok": false,
+      "path": "/mcp",
+      "status": 404
+    },
+    {
+      "check": "MCP exposes read-only tools",
+      "detail": "missing ['describe_pickable', 'get_scan_report', 'list_scans']",
+      "method": "POST",
+      "ok": false,
+      "path": "/mcp",
+      "status": 404
+    },
+    {
+      "check": "MCP existing report read",
+      "detail": "skipped: no existing scan was advertised",
+      "ok": true
+    },
+    {
+      "check": "MCP scan tool was not invoked",
+      "detail": "verification made no scan-start call",
+      "ok": true
+    },
+    {
+      "check": "Existing public REST /api/config",
+      "ok": true,
+      "method": "GET",
+      "path": "/api/config",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "detail": "JSON keys: csrf_token, mode"
+    },
+    {
+      "check": "Existing public REST /api/scans",
+      "ok": true,
+      "method": "GET",
+      "path": "/api/scans",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "detail": "JSON keys: scans"
+    }
+  ],
+  "status": "failed",
+  "summary": {
+    "failed": 54,
+    "passed": 16
+  },
+  "url": "https://solveny.dev",
+  "verified_at": "2026-10-11T11:33:42.414107+03:00",
+  "scope": "existing public deployment, no changes published"
+}

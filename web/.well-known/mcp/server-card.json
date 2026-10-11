@@ -1,0 +1,27 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
+  "name": "dev.solveny/pickable",
+  "title": "Pickable",
+  "version": "1.0.0",
+  "description": "Read public Pickable scan history and reports for public websites.",
+  "websiteUrl": "https://solveny.dev/docs/agent-scan",
+  "repository": {
+    "source": "github",
+    "url": "https://github.com/ozgureyilmaz/pickable"
+  },
+  "icons": [
+    {
+      "src": "https://solveny.dev/pickable-mark.svg",
+      "mimeType": "image/svg+xml",
+      "sizes": ["any"],
+      "theme": "dark"
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://solveny.dev/mcp",
+      "supportedProtocolVersions": ["2025-06-18", "2025-03-26"]
+    }
+  ]
+}

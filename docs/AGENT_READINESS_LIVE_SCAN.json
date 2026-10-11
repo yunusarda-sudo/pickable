@@ -1,0 +1,63 @@
+{
+  "observed_at": "2026-10-11T08:35:39.325639+00:00",
+  "scope": "local MCP server, live backend, real external providers",
+  "target": "solveny.dev",
+  "protocol_version": "2025-06-18",
+  "job_id": "61bff6d5-04f1-4299-9670-37718c7143b5",
+  "status": "completed",
+  "sources": [
+    {
+      "id": "cloudflare",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "ora",
+      "status": "completed",
+      "error": null
+    },
+    {
+      "id": "growth",
+      "status": "completed",
+      "error": null
+    }
+  ],
+  "normalized_report_available": true,
+  "normalized_checks": 7,
+  "pickable_preliminary_score": {
+    "total": 0.0,
+    "grade": "F",
+    "coverage": 85.4,
+    "breakdown": {
+      "discovery": {
+        "label": "Discoverability",
+        "points": 0.0,
+        "max_points": 20,
+        "measured": 2,
+        "defined": 2,
+        "coverage": 100.0
+      },
+      "content": {
+        "label": "Readability",
+        "points": 0.0,
+        "max_points": 25,
+        "measured": 2,
+        "defined": 2,
+        "coverage": 100.0
+      },
+      "usability": {
+        "label": "Usability",
+        "points": 0.0,
+        "max_points": 35,
+        "measured": 2,
+        "defined": 3,
+        "coverage": 66.7
+      }
+    },
+    "rubric_version": "pickable-0.2",
+    "label": "Preliminary score",
+    "method": "Layer score = PASS / (PASS + FAIL) \u00d7 layer weight. Unmeasured layers are null; no free points. Warning/UNKNOWN/N/A are excluded; coverage is shown separately.",
+    "final": true
+  },
+  "public_deployment_changed": false
+}

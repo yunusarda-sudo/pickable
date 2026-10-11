@@ -63,7 +63,7 @@ class UIPreviewTests(unittest.TestCase):
         for domain in ("127.0.0.1", "a" * 3000):
             with self.subTest(domain=domain[:20]):
                 status, _, _ = self.request("/api/scans", {"domain": domain}, headers)
-                self.assertEqual(status, 400)
+                self.assertEqual(status, 413 if len(domain) > 2048 else 400)
 
     def test_static_files_and_missing_routes(self):
         status, html, headers = self.request("/")

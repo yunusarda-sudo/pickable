@@ -1,0 +1,32 @@
+# Pickable API for agents
+
+> Read public scan results or create an asynchronous scan of a public domain.
+
+- [Human API guide](https://solveny.dev/api)
+- [OpenAPI 3.1](https://solveny.dev/openapi.json)
+- [Authentication and request protection](https://solveny.dev/auth.md)
+- [MCP integration guide](https://solveny.dev/docs/agent-scan)
+- [MCP server card](https://solveny.dev/.well-known/mcp/server-card.json)
+- [Agent discovery details](https://solveny.dev/.well-known/agent.json)
+- [RFC 9727 API catalog](https://solveny.dev/.well-known/api-catalog)
+- [Agent skill](https://solveny.dev/skills/pickable-scan/SKILL.md)
+
+## REST scan creation
+
+Read csrf_token from GET /api/config. POST exactly {"domain":"example.com"} to /api/scans with Content-Type: application/json and X-CSRF-Token. The domain may be bare or an HTTP(S) root URL; ports, credentials, non-root paths, IP literals, and private destinations are rejected. An operator-issued PICKABLE_AGENT_API_KEY bearer credential is an alternative. The request limit is 2,048 bytes.
+
+The response is 202 with job_id. Poll GET /api/scans/{job_id}; report may be partial while sources run. GET /api/scans/{job_id}/report returns 404 until available.
+
+## Public reads
+
+GET /api/scans, /api/scans/{job_id}, /api/scans/{job_id}/report, /api/scans/{job_id}/raw/{source}, /api/scans/{job_id}/preview, /api/config, and /api/health. Scan history and reports are public. The scan creation credential does not protect these read routes.
+
+## Rate and errors
+
+Queue capacity: 20 waiting scans. Default limits: 5 accepted scans per peer address per hour; 30 globally per hour. Follow Retry-After after 429. 400 means invalid input/length, 403 host/origin or scan credential failure, 408 body timeout, 413 oversized body, 415 non-JSON body, 503 backend unavailable.
+
+## MCP
+
+Use JSON-RPC 2.0 POST with Accept: application/json, text/event-stream. Initialize with 2025-03-26 or 2025-06-18; use the negotiated version in MCP-Protocol-Version later. Response format is application/json; notifications/initialized returns 202 with an empty body. GET is 405; SSE is unsupported. An enabled scan-start call with a missing or invalid key returns 401. Authorized scan-start business errors use HTTP 200 tool results with isError and an error code.
+
+Default tools are describe_pickable, list_scans, and get_scan_report. The start_website_scan tool is optional and requires server opt-in plus bearer authorization. This is not an OAuth, A2A, or payment interface.

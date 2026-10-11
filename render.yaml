@@ -7,9 +7,19 @@ services:
     plan: free
     buildCommand: "true"
     startCommand: python3 server.py
-    healthCheckPath: /api/config
+    healthCheckPath: /api/health
     envVars:
       - key: BIND
         value: 0.0.0.0
       - key: PYTHON_VERSION
         value: 3.12.3
+      - key: ALLOWED_HOSTS
+        value: solveny.dev,www.solveny.dev
+      - key: PICKABLE_PUBLIC_URL
+        value: https://solveny.dev
+      - key: PICKABLE_MCP_SCAN_ENABLED
+        value: "0"
+      - key: PICKABLE_SCANS_PER_HOUR
+        value: "5"
+      - key: PICKABLE_GLOBAL_SCANS_PER_HOUR
+        value: "30"

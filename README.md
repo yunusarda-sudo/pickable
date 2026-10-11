@@ -1,4 +1,8 @@
-# Agent Readiness Backend (Part 1)
+# Pickable
+
+Pickable analyzes public websites using Ora, Cloudflare and marketing checks.
+Its public demo is [solveny.dev](https://solveny.dev); the demo domain is not the
+product name. Reports preserve source evidence and uncertainty.
 
 Multi-source Agent Readiness Reporting backend core in pure Python standard library (3.12+).
 
@@ -118,3 +122,62 @@ sqlite3 data/scan.db "SELECT id, domain, status, started_at, finished_at FROM jo
 sqlite3 data/scan.db "SELECT id, source_id, status, error FROM source_runs;"
 sqlite3 data/scan.db "SELECT count(*) FROM checks;"
 ```
+
+## Agent interfaces
+
+The server serves `/robots.txt`, `/sitemap.xml`, `/llms.txt`, `/llms-full.txt`,
+`/openapi.json`, `/docs`, `/api`, `/auth.md`, `/skill.md`, Markdown page twins,
+and discovery catalogs under `/.well-known/`. HTML pages support
+`Accept: text/markdown`; `/?mode=agent` provides the agent onboarding view.
+See [the implementation report](AGENT_READINESS_REPORT.md) and
+[remaining actions](AGENT_READINESS_PLAN.md) for validation evidence.
+
+`POST /mcp` provides stateless Streamable HTTP with JSON replies. Public tools
+describe Pickable, list recent scans and retrieve a real stored report. Initialize
+first with protocol `2025-06-18` or `2025-03-26`, send the initialized notification,
+then discover tools. Clients send `Accept: application/json, text/event-stream`
+and the negotiated `MCP-Protocol-Version` header on subsequent requests.
+GET streaming and sessions are not implemented.
+
+The existing UI/REST scan flow obtains `X-CSRF-Token` from `/api/config` before
+`POST /api/scans`. An operator-issued bearer key is an optional alternative.
+This token protects against cross-site requests; public history/report reads
+remain unauthenticated. Never submit secrets or private domains.
+
+MCP scan creation is disabled by default. To enable it, set both
+`PICKABLE_MCP_SCAN_ENABLED=1` and `PICKABLE_AGENT_API_KEY` to a secret of at least
+32 ASCII characters. Callers must supply `Authorization: Bearer <key>` for the
+scan tool. Configure secrets through the deployment environment; server.py does
+not load `.env` files. The key can be rotated or removed and the service restarted
+to revoke access. No OAuth identity or per-user privacy is provided.
+
+All REST/MCP creation requests share limits: five scans per peer IP per hour and
+30 per process per hour by default. Configure `PICKABLE_SCANS_PER_HOUR` and
+`PICKABLE_GLOBAL_SCANS_PER_HOUR`. Proxy headers are not trusted, so clients behind
+one proxy may share the peer budget. Limits are in memory and reset on restart;
+multiple replicas require an external shared limiter. The scan queue holds at
+most 20 waiting jobs. The server limits request bodies, read timeouts and concurrent
+handlers; preview results are cached with bounded storage.
+
+Run a local check without consuming provider quota:
+
+```bash
+PICKABLE_PUBLIC_URL=http://127.0.0.1:8765 python3 server.py --demo
+# In another terminal:
+python3 scripts/verify_live.py --url http://127.0.0.1:8765
+```
+
+For Docker deployment on the configured host, `docker compose up -d --build`
+uses the existing Traefik network and domain routing. `render.yaml` serves the
+same application with `/api/health` as its health check. Set
+`PICKABLE_PUBLIC_URL` to the public HTTPS origin and explicitly allow its Host
+header using `ALLOWED_HOSTS`. Serve all updated `app/`, `web/`, and server files
+together. Check the deployed endpoints with:
+
+```bash
+python3 scripts/verify_live.py --url https://solveny.dev
+```
+
+The verifier starts no scans and does not trigger Ora rescans. Observe the Ora
+score separately after deployment; a passing local suite does not establish a
+public score change.
