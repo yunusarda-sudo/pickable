@@ -26,8 +26,8 @@
   </header>
   <main>
     <section id="landing-view" class="landing" aria-labelledby="landing-title">
-      <div class="hero-orbit" aria-hidden="true"></div>
-      <div class="discovery-field" aria-hidden="true">
+      <div class="hero-orbit" aria-hidden="true"><span class="orbit-highlight"></span></div>
+      <div class="discovery-field" id="discovery-field" aria-hidden="true">
         <svg class="field-links" viewBox="0 0 1200 560" preserveAspectRatio="none" focusable="false">
           <path d="M110 160 L235 208 L320 118 M1080 130 L965 205 L885 150 M115 430 L250 375 M1085 450 L970 390" />
           <circle cx="110" cy="160" r="5" /><circle cx="235" cy="208" r="3" /><circle cx="320" cy="118" r="4" />
@@ -48,8 +48,6 @@
         <input id="domain" name="url" placeholder="https://yoursite.com/product" required maxlength="2000" autocomplete="url" spellcheck="false" autocapitalize="none">
         <button id="scan-button" type="submit" aria-label="Start scan"><span>Scan</span><span aria-hidden="true">↗</span></button>
       </form>
-      <p class="hero-note">Enter a public website URL. Readiness checks cover its domain; product analysis reads the exact URL.</p>
-      <div class="hero-bottom" aria-hidden="true"><span>01 / SOCIAL PRESENCE</span><span>02 / CONTENT &amp; BLOG</span><span>03 / AGENT READINESS</span></div>
     </section>
     <section id="loading-view" class="loading-view" aria-labelledby="loading-title" aria-busy="true" hidden>
       <div class="loading-grid">
@@ -118,7 +116,6 @@
     <div id="empty-state" hidden></div>
     <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
   </main>
-  <footer class="site-footer"><span>One address. A clearer picture.</span><nav aria-label="More about Pickable"><a href="/about">About</a><a href="/docs">Docs</a><a href="/api">API</a><a href="/pricing">Pricing</a><a href="/index.md">index.md</a><a href="/about.md">about.md</a><a href="/docs.md">docs.md</a><a href="/api.md">api.md</a><a href="/agent-scan.md">agent-scan.md</a><a href="/pricing.md">pricing.md</a></nav><span class="footer-brand"><img src="/pickable-rise.svg" width="22" height="22" alt="">pickable © 2026 </span></footer>
   <dialog id="history-dialog" aria-labelledby="history-title"><div class="dialog-head"><h2 id="history-title">Recent scans</h2><div><button id="refresh-history" aria-label="Refresh history">↻</button><button id="close-history" aria-label="Close history">✕</button></div></div><div id="history" class="history"></div></dialog>
 </body>
 </html>

@@ -421,6 +421,171 @@ $("cancel-analysis").addEventListener("click", returnToLanding);
 $("open-history").addEventListener("click", () => { refreshHistory(); $("history-dialog").showModal(); });
 $("close-history").addEventListener("click", () => $("history-dialog").close());
 for (const button of document.querySelectorAll("[data-mode-button]")) button.addEventListener("click", () => setMode(button.dataset.modeButton));
+
+/* Ambient discovery-field animation: restrained premium motion.
+   - 5 drifting nodes on slow organic (Lissajous) paths + glow pulsation.
+   - 2-3 light pulses traveling along the dashed connections.
+   - Gentle pointer parallax (lerped) on background layers only; hero
+     text and form are never moved. Static SVG remains as no-JS fallback.
+   - Single rAF loop, transform/opacity only, pauses when tab hidden or
+     hero off-screen, skips entirely on reduced-motion or small screens
+     (where the field is hidden by CSS). */
+(function initAmbientField() {
+  try {
+    if (typeof document === "undefined" || typeof document.querySelector !== "function") return;
+    if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") return;
+    if (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    var field = document.querySelector(".discovery-field");
+    var svg = field ? field.querySelector(".field-links") : null;
+    var orbit = document.querySelector(".hero-orbit");
+    var landing = document.querySelector(".landing") || document.body;
+    if (!field || !svg || typeof svg.querySelectorAll !== "function") return;
+    if (typeof window.matchMedia === "function" && window.matchMedia("(max-width: 900px)").matches) return;
+    if (typeof svg.getBoundingClientRect === "function" && field.offsetParent === null && window.getComputedStyle(field).display === "none") return;
+
+    var circles = Array.prototype.slice.call(svg.querySelectorAll("circle"));
+    var link = svg.querySelector("path");
+    if (!circles.length || !link) return;
+    var canMeasure = typeof link.getTotalLength === "function" && typeof link.getPointAtLength === "function";
+
+    // Pick 5 spread-out nodes so most of the field stays perfectly still.
+    var picks = [0, 2, 5, 7, 9].filter(function (i) { return i < circles.length; });
+    while (picks.length < Math.min(4, circles.length)) picks.push(picks.length);
+    var nodes = picks.map(function (idx, k) {
+      var el = circles[idx];
+      el.classList.add("drift-node");
+      return {
+        el: el,
+        bx: parseFloat(el.getAttribute("cx")) || 0,
+        by: parseFloat(el.getAttribute("cy")) || 0,
+        base: parseFloat(el.getAttribute("opacity")) || el.opacity || 0.64,
+        ax: 6 + (k % 3) * 3, ay: 5 + ((k + 1) % 3) * 3,
+        w1: (2 * Math.PI) / (15000 + k * 3700), w2: (2 * Math.PI) / (19000 + k * 2900),
+        p1: k * 1.7, p2: k * 2.3,
+        wo: (2 * Math.PI) / (9000 + k * 2100), po: k * 1.1,
+        rx: 0, ry: 0,
+      };
+    });
+
+    // Traveling light pulses along the dashed connections (2 on desktop).
+    var pulses = [];
+    var pathLen = 0;
+    if (canMeasure) {
+      try { pathLen = link.getTotalLength(); } catch (e) { pathLen = 0; }
+    }
+    if (pathLen > 0 && typeof document.createElementNS === "function") {
+      var NS = "http://www.w3.org/2000/svg";
+      var defs = [
+        { dur: 9000, phase: 0 },
+        { dur: 13000, phase: 0.45 },
+      ];
+      for (var d = 0; d < defs.length; d++) {
+        var dot = document.createElementNS(NS, "circle");
+        dot.setAttribute("class", "pulse-dot");
+        dot.setAttribute("r", "3");
+        svg.appendChild(dot);
+        pulses.push({ el: dot, dur: defs[d].dur, phase: defs[d].phase });
+      }
+    }
+
+    // Pointer parallax targets (background layers only).
+    var tx = 0, ty = 0, cx = 0, cy = 0, px = 0, py = 0, hasPointer = false;
+    var pointerSvgX = 0, pointerSvgY = 0;
+    function svgPoint(clientX, clientY) {
+      try {
+        var r = svg.getBoundingClientRect();
+        if (!r.width || !r.height) return null;
+        return { x: (clientX - r.left) / r.width * 1200, y: (clientY - r.top) / r.height * 560 };
+      } catch (e) { return null; }
+    }
+    if (typeof window.addEventListener === "function") {
+      window.addEventListener("pointermove", function (e) {
+        if (e.pointerType === "touch") return;
+        var nx = (e.clientX / window.innerWidth) * 2 - 1;
+        var ny = (e.clientY / window.innerHeight) * 2 - 1;
+        tx = Math.max(-1, Math.min(1, nx)) * 10;
+        ty = Math.max(-1, Math.min(1, ny)) * 8;
+        px = -tx * 1.6; py = -ty * 1.6;
+        var p = svgPoint(e.clientX, e.clientY);
+        if (p) { pointerSvgX = p.x; pointerSvgY = p.y; hasPointer = true; }
+      }, { passive: true });
+      window.addEventListener("pointerleave", function () { hasPointer = false; tx = ty = px = py = 0; });
+    }
+
+    var running = true;
+    var rafId = 0;
+    function frame(now) {
+      if (!running) return;
+      rafId = window.requestAnimationFrame(frame);
+      if (document.hidden) return;
+      var t = now || 0;
+      // Lerped parallax so the background never snaps.
+      cx += (tx - cx) * 0.045; cy += (ty - cy) * 0.045;
+      var ox = px, oy = py;
+      if (orbit) {
+        var ocx = parseFloat(orbit.dataset.ox || "0"), ocy = parseFloat(orbit.dataset.oy || "0");
+        ocx += (ox - ocx) * 0.035; ocy += (oy - ocy) * 0.035;
+        orbit.dataset.ox = String(ocx); orbit.dataset.oy = String(ocy);
+        orbit.style.setProperty("--opx", ocx.toFixed(2) + "px");
+        orbit.style.setProperty("--opy", ocy.toFixed(2) + "px");
+      }
+      field.style.setProperty("--px", cx.toFixed(2) + "px");
+      field.style.setProperty("--py", cy.toFixed(2) + "px");
+
+      for (var i = 0; i < nodes.length; i++) {
+        var n = nodes[i];
+        var dx = n.ax * Math.sin(n.w1 * t + n.p1);
+        var dy = n.ay * Math.sin(n.w2 * t + n.p2);
+        // Gentle cursor repulsion (<=7px), smoothly eased per node.
+        var gx = 0, gy = 0;
+        if (hasPointer) {
+          var vx = (n.bx + dx) - pointerSvgX, vy = (n.by + dy) - pointerSvgY;
+          var dist = Math.sqrt(vx * vx + vy * vy);
+          if (dist > 1 && dist < 150) {
+            var f = (1 - dist / 150) * 7;
+            gx = (vx / dist) * f; gy = (vy / dist) * f;
+          }
+        }
+        n.rx += (gx - n.rx) * 0.06; n.ry += (gy - n.ry) * 0.06;
+        n.el.setAttribute("transform", "translate(" + (dx + n.rx).toFixed(2) + " " + (dy + n.ry).toFixed(2) + ")");
+        var glow = 0.5 + 0.5 * Math.sin(n.wo * t + n.po);
+        n.el.setAttribute("opacity", (n.base * (0.55 + 0.45 * glow)).toFixed(3));
+      }
+
+      for (var j = 0; j < pulses.length; j++) {
+        var pu = pulses[j];
+        var prog = ((t / pu.dur) + pu.phase) % 1;
+        try {
+          var pt = link.getPointAtLength(prog * pathLen);
+          pu.el.setAttribute("cx", pt.x.toFixed(1));
+          pu.el.setAttribute("cy", pt.y.toFixed(1));
+        } catch (e) { /* static fallback stays */ }
+        var env = Math.sin(prog * Math.PI); // fade in/out at path ends
+        pu.el.setAttribute("opacity", (env * 0.9).toFixed(3));
+      }
+    }
+
+    if ("IntersectionObserver" in window && landing) {
+      try {
+        new IntersectionObserver(function (entries) {
+          var visible = entries[0] && entries[0].isIntersecting;
+          if (visible && !running) { running = true; rafId = window.requestAnimationFrame(frame); }
+          else if (!visible && running) { running = false; window.cancelAnimationFrame(rafId); }
+        }, { threshold: 0 }).observe(landing);
+      } catch (e) { /* run unconditionally */ }
+    }
+    if (typeof document.addEventListener === "function") {
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden && running && !rafId) rafId = window.requestAnimationFrame(frame);
+      });
+    }
+    if (typeof window.addEventListener === "function") {
+      window.addEventListener("pagehide", function () { running = false; window.cancelAnimationFrame(rafId); });
+    }
+    rafId = window.requestAnimationFrame(frame);
+  } catch (e) { /* ambient animation is decorative; never break the scan flow */ }
+})();
+
 async function initialize() {
   let saved = null; try { saved = localStorage.getItem("pickable-mode"); } catch {}
   setMode(saved || "normal");

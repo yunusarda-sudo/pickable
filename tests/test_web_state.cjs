@@ -311,3 +311,41 @@ test('readiness findings ignore malformed checks and never show raw provider pay
   assert.match(text, /XML sitemap/);
   assert.doesNotMatch(text, /stack trace secret|unsafe|\[object Object\]/);
 });
+
+test('landing has no step indicators, helper text, or footer in either mode', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../web/index.html'), 'utf8');
+  const landing = html.split('<section id="loading-view"')[0];
+  assert.doesNotMatch(landing, /01 \/ SOCIAL PRESENCE|02 \/ CONTENT|03 \/ AGENT READINESS/);
+  assert.doesNotMatch(landing, /hero-bottom/);
+  assert.doesNotMatch(landing, /Enter a public website URL/);
+  assert.doesNotMatch(landing, /hero-note/);
+  assert.doesNotMatch(html, /<footer|site-footer|footer-brand/);
+  assert.doesNotMatch(html, /One address\. A clearer picture\./);
+  assert.doesNotMatch(html, /href="\/(about|docs|api|pricing|index\.md|about\.md|docs\.md|api\.md|agent-scan\.md|pricing\.md)"/);
+  // The bundled script must never query removed selectors, so no
+  // interaction or mode switch can re-inject them into the DOM.
+  const js = fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8');
+  assert.doesNotMatch(js, /hero-bottom|site-footer|footer-brand|hero-note/);
+  const css = fs.readFileSync(path.join(__dirname, '../web/styles.css'), 'utf8');
+  assert.doesNotMatch(css, /hero-bottom|site-footer|footer-brand|hero-note/);
+  // Landing markup is static across modes; both execute cleanly.
+  for (const mode of ['normal', 'agent']) {
+    const ui = setup(() => ({}));
+    ui.state.mode = mode;
+    assert.doesNotThrow(() => ui.clearReport());
+  }
+});
+
+test('landing keeps brand, toggle, history, headline, form, and ambient background', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../web/index.html'), 'utf8');
+  for (const token of ['site-header', 'data-mode-button', 'open-history', 'history-dialog',
+      'landing-title', 'scan-form', 'id="domain"', 'scan-button',
+      'hero-orbit', 'discovery-field', 'field-links',
+      'field-social', 'field-discovery', 'field-content', 'field-compatibility']) {
+    assert.ok(html.includes(token), `landing must keep ${token}`);
+  }
+  assert.match(html, /SOCIAL PRESENCE/);
+  assert.match(html, /DISCOVERABILITY/);
+  assert.match(html, /CONTENT &amp; BLOG/);
+  assert.match(html, /AGENT COMPATIBILITY/);
+});
