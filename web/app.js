@@ -272,7 +272,7 @@ function renderMarketing(marketing) {
     card.append(element("span", "action-number", String(index + 1).padStart(2,"0")), element("h3", "", check.title), element("p", "", actionText));
     $("mk-action-list").append(card);
   }
-  if (marketing.score.final === false) $("mk-action-list").append(element("p", "report-empty", "Checking your site now."));
+  if (marketing.score.final === false) $("mk-action-list").append(element("p", "report-empty", "Checking your site now. Results will appear when the checks are complete."));
   else if (insufficient) $("mk-action-list").append(element("p", "report-empty",
     "Recommendations are not available yet. Pickable generates recommendations from issues identified during an actual website assessment. "
     + "Because the required checks couldn't be completed, we can't reliably identify missing marketing elements or recommend improvements. "
