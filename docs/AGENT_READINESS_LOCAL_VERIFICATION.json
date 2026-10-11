@@ -1,0 +1,1268 @@
+{
+  "checks": [
+    {
+      "check": "discovery /auth.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/auth.md",
+      "status": 200
+    },
+    {
+      "check": "readable text /auth.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/auth.md"
+    },
+    {
+      "check": "discovery /pricing.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/pricing.md",
+      "status": 200
+    },
+    {
+      "check": "readable text /pricing.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/pricing.md"
+    },
+    {
+      "check": "discovery /index.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/index.md",
+      "status": 200
+    },
+    {
+      "check": "readable text /index.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/index.md"
+    },
+    {
+      "check": "discovery /about.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/about.md",
+      "status": 200
+    },
+    {
+      "check": "readable text /about.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/about.md"
+    },
+    {
+      "check": "discovery /api.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/api.md",
+      "status": 200
+    },
+    {
+      "check": "readable text /api.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/api.md"
+    },
+    {
+      "check": "discovery /docs.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/docs.md",
+      "status": 200
+    },
+    {
+      "check": "readable text /docs.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/docs.md"
+    },
+    {
+      "check": "discovery /skill.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/skill.md",
+      "status": 200
+    },
+    {
+      "check": "readable text /skill.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/skill.md"
+    },
+    {
+      "check": "discovery /docs/llms.txt",
+      "content_type": "text/plain",
+      "method": "GET",
+      "ok": true,
+      "path": "/docs/llms.txt",
+      "status": 200
+    },
+    {
+      "check": "readable text /docs/llms.txt",
+      "content_type": "text/plain",
+      "method": "GET",
+      "ok": true,
+      "path": "/docs/llms.txt"
+    },
+    {
+      "check": "discovery /api/llms.txt",
+      "content_type": "text/plain",
+      "method": "GET",
+      "ok": true,
+      "path": "/api/llms.txt",
+      "status": 200
+    },
+    {
+      "check": "readable text /api/llms.txt",
+      "content_type": "text/plain",
+      "method": "GET",
+      "ok": true,
+      "path": "/api/llms.txt"
+    },
+    {
+      "check": "discovery /mcp/server-card",
+      "content_type": "application/mcp-server-card+json",
+      "method": "GET",
+      "ok": true,
+      "path": "/mcp/server-card",
+      "status": 200
+    },
+    {
+      "check": "JSON content type /mcp/server-card",
+      "content_type": "application/mcp-server-card+json",
+      "method": "GET",
+      "ok": true,
+      "path": "/mcp/server-card"
+    },
+    {
+      "check": "valid JSON /mcp/server-card",
+      "method": "GET",
+      "ok": true,
+      "path": "/mcp/server-card"
+    },
+    {
+      "check": "discovery /.well-known/agent.json",
+      "content_type": "application/json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/agent.json",
+      "status": 200
+    },
+    {
+      "check": "JSON content type /.well-known/agent.json",
+      "content_type": "application/json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/agent.json"
+    },
+    {
+      "check": "valid JSON /.well-known/agent.json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/agent.json"
+    },
+    {
+      "check": "discovery /.well-known/ard.json",
+      "content_type": "application/json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/ard.json",
+      "status": 200
+    },
+    {
+      "check": "JSON content type /.well-known/ard.json",
+      "content_type": "application/json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/ard.json"
+    },
+    {
+      "check": "valid JSON /.well-known/ard.json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/ard.json"
+    },
+    {
+      "check": "discovery /.well-known/ai-catalog.json",
+      "content_type": "application/json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/ai-catalog.json",
+      "status": 200
+    },
+    {
+      "check": "JSON content type /.well-known/ai-catalog.json",
+      "content_type": "application/json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/ai-catalog.json"
+    },
+    {
+      "check": "valid JSON /.well-known/ai-catalog.json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/ai-catalog.json"
+    },
+    {
+      "check": "discovery /.well-known/api-catalog",
+      "content_type": "application/linkset+json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/api-catalog",
+      "status": 200
+    },
+    {
+      "check": "JSON content type /.well-known/api-catalog",
+      "content_type": "application/linkset+json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/api-catalog"
+    },
+    {
+      "check": "valid JSON /.well-known/api-catalog",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/api-catalog"
+    },
+    {
+      "check": "discovery /.well-known/agent-skills/index.json",
+      "content_type": "application/json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/agent-skills/index.json",
+      "status": 200
+    },
+    {
+      "check": "JSON content type /.well-known/agent-skills/index.json",
+      "content_type": "application/json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/agent-skills/index.json"
+    },
+    {
+      "check": "valid JSON /.well-known/agent-skills/index.json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/agent-skills/index.json"
+    },
+    {
+      "check": "legacy plugin manifest omitted",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/ai-plugin.json",
+      "status": 404
+    },
+    {
+      "check": "legacy plugin manifest omission is explicit",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/ai-plugin.json",
+      "status": 404
+    },
+    {
+      "check": "markdown suffix /index.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/index.md",
+      "status": 200
+    },
+    {
+      "check": "markdown representation /index.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/index.md",
+      "status": 200
+    },
+    {
+      "check": "markdown suffix /auth.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/auth.md",
+      "status": 200
+    },
+    {
+      "check": "markdown representation /auth.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/auth.md",
+      "status": 200
+    },
+    {
+      "check": "markdown suffix /pricing.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/pricing.md",
+      "status": 200
+    },
+    {
+      "check": "markdown representation /pricing.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/pricing.md",
+      "status": 200
+    },
+    {
+      "check": "markdown suffix /index.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/index.md",
+      "status": 200
+    },
+    {
+      "check": "markdown representation /index.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/index.md",
+      "status": 200
+    },
+    {
+      "check": "markdown suffix /about.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/about.md",
+      "status": 200
+    },
+    {
+      "check": "markdown representation /about.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/about.md",
+      "status": 200
+    },
+    {
+      "check": "markdown suffix /api.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/api.md",
+      "status": 200
+    },
+    {
+      "check": "markdown representation /api.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/api.md",
+      "status": 200
+    },
+    {
+      "check": "markdown suffix /docs.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/docs.md",
+      "status": 200
+    },
+    {
+      "check": "markdown representation /docs.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/docs.md",
+      "status": 200
+    },
+    {
+      "check": "markdown suffix /skill.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/skill.md",
+      "status": 200
+    },
+    {
+      "check": "markdown representation /skill.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/skill.md",
+      "status": 200
+    },
+    {
+      "check": "root agent markdown mode",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/?mode=agent",
+      "status": 200
+    },
+    {
+      "check": "root agent markdown mode",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/?mode=agent",
+      "status": 200
+    },
+    {
+      "check": "XML sitemap",
+      "content_type": "application/xml",
+      "method": "GET",
+      "ok": true,
+      "path": "/sitemap.xml",
+      "status": 200
+    },
+    {
+      "check": "sitemap XML content type",
+      "content_type": "application/xml",
+      "method": "GET",
+      "ok": true,
+      "path": "/sitemap.xml"
+    },
+    {
+      "check": "valid XML sitemap",
+      "content_type": "application/xml",
+      "method": "GET",
+      "ok": true,
+      "path": "/sitemap.xml"
+    },
+    {
+      "check": "sitemap uses one configured public origin",
+      "method": "GET",
+      "ok": true,
+      "path": "/sitemap.xml"
+    },
+    {
+      "check": "sitemap link /",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/",
+      "status": 200
+    },
+    {
+      "check": "sitemap target /",
+      "method": "GET",
+      "ok": true,
+      "path": "/",
+      "status": 200
+    },
+    {
+      "check": "sitemap link /about",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/about",
+      "status": 200
+    },
+    {
+      "check": "sitemap target /about",
+      "method": "GET",
+      "ok": true,
+      "path": "/about",
+      "status": 200
+    },
+    {
+      "check": "sitemap link /docs",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/docs",
+      "status": 200
+    },
+    {
+      "check": "sitemap target /docs",
+      "method": "GET",
+      "ok": true,
+      "path": "/docs",
+      "status": 200
+    },
+    {
+      "check": "sitemap link /api",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/api",
+      "status": 200
+    },
+    {
+      "check": "sitemap target /api",
+      "method": "GET",
+      "ok": true,
+      "path": "/api",
+      "status": 200
+    },
+    {
+      "check": "sitemap link /docs/agent-scan",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/docs/agent-scan",
+      "status": 200
+    },
+    {
+      "check": "sitemap target /docs/agent-scan",
+      "method": "GET",
+      "ok": true,
+      "path": "/docs/agent-scan",
+      "status": 200
+    },
+    {
+      "check": "sitemap link /pricing",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/pricing",
+      "status": 200
+    },
+    {
+      "check": "sitemap target /pricing",
+      "method": "GET",
+      "ok": true,
+      "path": "/pricing",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /",
+      "method": "GET",
+      "ok": true,
+      "path": "/",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /.well-known/agent.json",
+      "content_type": "application/json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/agent.json",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /.well-known/agent.json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/agent.json",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /.well-known/api-catalog",
+      "content_type": "application/linkset+json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/api-catalog",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /.well-known/api-catalog",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/api-catalog",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /.well-known/mcp/server-card.json",
+      "content_type": "application/mcp-server-card+json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/mcp/server-card.json",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /.well-known/mcp/server-card.json",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/mcp/server-card.json",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /about",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/about",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /about",
+      "method": "GET",
+      "ok": true,
+      "path": "/about",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /api",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/api",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /api",
+      "method": "GET",
+      "ok": true,
+      "path": "/api",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /api/config",
+      "content_type": "application/json",
+      "method": "GET",
+      "ok": true,
+      "path": "/api/config",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /api/config",
+      "method": "GET",
+      "ok": true,
+      "path": "/api/config",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /api/health",
+      "content_type": "application/json",
+      "method": "GET",
+      "ok": true,
+      "path": "/api/health",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /api/health",
+      "method": "GET",
+      "ok": true,
+      "path": "/api/health",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /api/scans",
+      "content_type": "application/json",
+      "method": "GET",
+      "ok": true,
+      "path": "/api/scans",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /api/scans",
+      "method": "GET",
+      "ok": true,
+      "path": "/api/scans",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /auth.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/auth.md",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /auth.md",
+      "method": "GET",
+      "ok": true,
+      "path": "/auth.md",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /docs",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/docs",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /docs",
+      "method": "GET",
+      "ok": true,
+      "path": "/docs",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /docs/agent-scan",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/docs/agent-scan",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /docs/agent-scan",
+      "method": "GET",
+      "ok": true,
+      "path": "/docs/agent-scan",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /llms-full.txt",
+      "content_type": "text/plain",
+      "method": "GET",
+      "ok": true,
+      "path": "/llms-full.txt",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /llms-full.txt",
+      "method": "GET",
+      "ok": true,
+      "path": "/llms-full.txt",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /pricing",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/pricing",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /pricing",
+      "method": "GET",
+      "ok": true,
+      "path": "/pricing",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /skills/pickable-scan/SKILL.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/skills/pickable-scan/SKILL.md",
+      "status": 200
+    },
+    {
+      "check": "advertised resource /skills/pickable-scan/SKILL.md",
+      "method": "GET",
+      "ok": true,
+      "path": "/skills/pickable-scan/SKILL.md",
+      "status": 200
+    },
+    {
+      "check": "homepage HTML",
+      "content_type": "text/html",
+      "method": "GET",
+      "ok": true,
+      "path": "/",
+      "status": 200
+    },
+    {
+      "check": "homepage includes valid JSON-LD",
+      "method": "GET",
+      "ok": true,
+      "path": "/"
+    },
+    {
+      "check": "homepage link /",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/",
+      "status": 200
+    },
+    {
+      "check": "homepage link /",
+      "method": "GET",
+      "ok": true,
+      "path": "/",
+      "status": 200
+    },
+    {
+      "check": "homepage link /about",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/about",
+      "status": 200
+    },
+    {
+      "check": "homepage link /about",
+      "method": "GET",
+      "ok": true,
+      "path": "/about",
+      "status": 200
+    },
+    {
+      "check": "homepage link /about.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/about.md",
+      "status": 200
+    },
+    {
+      "check": "homepage link /about.md",
+      "method": "GET",
+      "ok": true,
+      "path": "/about.md",
+      "status": 200
+    },
+    {
+      "check": "homepage link /agent-scan.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/agent-scan.md",
+      "status": 200
+    },
+    {
+      "check": "homepage link /agent-scan.md",
+      "method": "GET",
+      "ok": true,
+      "path": "/agent-scan.md",
+      "status": 200
+    },
+    {
+      "check": "homepage link /api",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/api",
+      "status": 200
+    },
+    {
+      "check": "homepage link /api",
+      "method": "GET",
+      "ok": true,
+      "path": "/api",
+      "status": 200
+    },
+    {
+      "check": "homepage link /api.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/api.md",
+      "status": 200
+    },
+    {
+      "check": "homepage link /api.md",
+      "method": "GET",
+      "ok": true,
+      "path": "/api.md",
+      "status": 200
+    },
+    {
+      "check": "homepage link /app.js",
+      "content_type": "text/javascript",
+      "method": "GET",
+      "ok": true,
+      "path": "/app.js",
+      "status": 200
+    },
+    {
+      "check": "homepage link /app.js",
+      "method": "GET",
+      "ok": true,
+      "path": "/app.js",
+      "status": 200
+    },
+    {
+      "check": "homepage link /docs",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/docs",
+      "status": 200
+    },
+    {
+      "check": "homepage link /docs",
+      "method": "GET",
+      "ok": true,
+      "path": "/docs",
+      "status": 200
+    },
+    {
+      "check": "homepage link /docs.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/docs.md",
+      "status": 200
+    },
+    {
+      "check": "homepage link /docs.md",
+      "method": "GET",
+      "ok": true,
+      "path": "/docs.md",
+      "status": 200
+    },
+    {
+      "check": "homepage link /index.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/index.md",
+      "status": 200
+    },
+    {
+      "check": "homepage link /index.md",
+      "method": "GET",
+      "ok": true,
+      "path": "/index.md",
+      "status": 200
+    },
+    {
+      "check": "homepage link /llms.txt",
+      "content_type": "text/plain",
+      "method": "GET",
+      "ok": true,
+      "path": "/llms.txt",
+      "status": 200
+    },
+    {
+      "check": "homepage link /llms.txt",
+      "method": "GET",
+      "ok": true,
+      "path": "/llms.txt",
+      "status": 200
+    },
+    {
+      "check": "homepage link /openapi.json",
+      "content_type": "application/json",
+      "method": "GET",
+      "ok": true,
+      "path": "/openapi.json",
+      "status": 200
+    },
+    {
+      "check": "homepage link /openapi.json",
+      "method": "GET",
+      "ok": true,
+      "path": "/openapi.json",
+      "status": 200
+    },
+    {
+      "check": "homepage link /pickable-mark.svg",
+      "content_type": "image/svg+xml",
+      "method": "GET",
+      "ok": true,
+      "path": "/pickable-mark.svg",
+      "status": 200
+    },
+    {
+      "check": "homepage link /pickable-mark.svg",
+      "method": "GET",
+      "ok": true,
+      "path": "/pickable-mark.svg",
+      "status": 200
+    },
+    {
+      "check": "homepage link /pricing",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/pricing",
+      "status": 200
+    },
+    {
+      "check": "homepage link /pricing",
+      "method": "GET",
+      "ok": true,
+      "path": "/pricing",
+      "status": 200
+    },
+    {
+      "check": "homepage link /pricing.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/pricing.md",
+      "status": 200
+    },
+    {
+      "check": "homepage link /pricing.md",
+      "method": "GET",
+      "ok": true,
+      "path": "/pricing.md",
+      "status": 200
+    },
+    {
+      "check": "homepage link /styles.css",
+      "content_type": "text/css",
+      "method": "GET",
+      "ok": true,
+      "path": "/styles.css",
+      "status": 200
+    },
+    {
+      "check": "homepage link /styles.css",
+      "method": "GET",
+      "ok": true,
+      "path": "/styles.css",
+      "status": 200
+    },
+    {
+      "check": "homepage link /",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/",
+      "status": 200
+    },
+    {
+      "check": "homepage link /",
+      "method": "GET",
+      "ok": true,
+      "path": "/",
+      "status": 200
+    },
+    {
+      "check": "homepage link /index.md",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/index.md",
+      "status": 200
+    },
+    {
+      "check": "homepage link /index.md",
+      "method": "GET",
+      "ok": true,
+      "path": "/index.md",
+      "status": 200
+    },
+    {
+      "check": "OpenAPI document",
+      "content_type": "application/json",
+      "method": "GET",
+      "ok": true,
+      "path": "/openapi.json",
+      "status": 200
+    },
+    {
+      "check": "OpenAPI JSON content type",
+      "content_type": "application/json",
+      "method": "GET",
+      "ok": true,
+      "path": "/openapi.json"
+    },
+    {
+      "check": "OpenAPI contract",
+      "ok": true,
+      "path": "/.well-known/api-catalog"
+    },
+    {
+      "check": "HEAD /",
+      "content_type": "text/html",
+      "method": "HEAD",
+      "ok": true,
+      "path": "/",
+      "status": 200
+    },
+    {
+      "check": "HEAD metadata /",
+      "method": "HEAD",
+      "ok": true,
+      "path": "/",
+      "status": 200
+    },
+    {
+      "check": "HEAD /index.md",
+      "content_type": "text/markdown",
+      "method": "HEAD",
+      "ok": true,
+      "path": "/index.md",
+      "status": 200
+    },
+    {
+      "check": "HEAD metadata /index.md",
+      "method": "HEAD",
+      "ok": true,
+      "path": "/index.md",
+      "status": 200
+    },
+    {
+      "check": "HEAD /docs/llms.txt",
+      "content_type": "text/plain",
+      "method": "HEAD",
+      "ok": true,
+      "path": "/docs/llms.txt",
+      "status": 200
+    },
+    {
+      "check": "HEAD metadata /docs/llms.txt",
+      "method": "HEAD",
+      "ok": true,
+      "path": "/docs/llms.txt",
+      "status": 200
+    },
+    {
+      "check": "HEAD /.well-known/agent.json",
+      "content_type": "application/json",
+      "method": "HEAD",
+      "ok": true,
+      "path": "/.well-known/agent.json",
+      "status": 200
+    },
+    {
+      "check": "HEAD metadata /.well-known/agent.json",
+      "method": "HEAD",
+      "ok": true,
+      "path": "/.well-known/agent.json",
+      "status": 200
+    },
+    {
+      "check": "HEAD /mcp/server-card",
+      "content_type": "application/mcp-server-card+json",
+      "method": "HEAD",
+      "ok": true,
+      "path": "/mcp/server-card",
+      "status": 200
+    },
+    {
+      "check": "HEAD metadata /mcp/server-card",
+      "method": "HEAD",
+      "ok": true,
+      "path": "/mcp/server-card",
+      "status": 200
+    },
+    {
+      "check": "A2A unsupported",
+      "content_type": "text/markdown",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/agent-card.json",
+      "status": 404
+    },
+    {
+      "check": "A2A is explicitly unsupported",
+      "method": "GET",
+      "ok": true,
+      "path": "/.well-known/agent-card.json",
+      "status": 404
+    },
+    {
+      "check": "MCP initialize",
+      "content_type": "application/json",
+      "method": "POST",
+      "ok": true,
+      "path": "/mcp",
+      "status": 200
+    },
+    {
+      "check": "MCP sessionless initialize",
+      "method": "POST",
+      "ok": true,
+      "path": "/mcp",
+      "status": 200
+    },
+    {
+      "check": "MCP initialized notification",
+      "method": "POST",
+      "ok": true,
+      "path": "/mcp",
+      "status": 202
+    },
+    {
+      "check": "MCP notification accepted without response",
+      "method": "POST",
+      "ok": true,
+      "path": "/mcp",
+      "status": 202
+    },
+    {
+      "check": "MCP ping",
+      "content_type": "application/json",
+      "method": "POST",
+      "ok": true,
+      "path": "/mcp",
+      "status": 200
+    },
+    {
+      "check": "MCP ping",
+      "method": "POST",
+      "ok": true,
+      "path": "/mcp",
+      "status": 200
+    },
+    {
+      "check": "MCP tools/list",
+      "content_type": "application/json",
+      "method": "POST",
+      "ok": true,
+      "path": "/mcp",
+      "status": 200
+    },
+    {
+      "check": "MCP exposes read-only tools",
+      "method": "POST",
+      "ok": true,
+      "path": "/mcp",
+      "status": 200
+    },
+    {
+      "check": "MCP tool describe_pickable",
+      "content_type": "application/json",
+      "method": "POST",
+      "ok": true,
+      "path": "/mcp",
+      "status": 200
+    },
+    {
+      "check": "MCP tool describe_pickable returns data",
+      "method": "POST",
+      "ok": true,
+      "path": "/mcp",
+      "status": 200
+    },
+    {
+      "check": "MCP tool list_scans",
+      "content_type": "application/json",
+      "method": "POST",
+      "ok": true,
+      "path": "/mcp",
+      "status": 200
+    },
+    {
+      "check": "MCP tool list_scans returns data",
+      "method": "POST",
+      "ok": true,
+      "path": "/mcp",
+      "status": 200
+    },
+    {
+      "check": "MCP existing report read",
+      "detail": "skipped: no existing scan was advertised",
+      "ok": true
+    },
+    {
+      "check": "MCP scan tool was not invoked",
+      "detail": "verification made no scan-start call",
+      "ok": true
+    }
+  ],
+  "status": "passed",
+  "summary": {
+    "failed": 0,
+    "passed": 169
+  },
+  "url": "http://127.0.0.1:18765",
+  "verified_at": "2026-10-11T11:39:22.819262+03:00",
+  "scope": "localhost demo, synthetic data"
+}

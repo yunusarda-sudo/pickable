@@ -5,6 +5,11 @@ services:
     restart: unless-stopped
     environment:
       - ALLOWED_HOSTS=solveny.dev,www.solveny.dev
+      - PICKABLE_PUBLIC_URL=https://solveny.dev
+      - PICKABLE_MCP_SCAN_ENABLED=${PICKABLE_MCP_SCAN_ENABLED:-0}
+      - PICKABLE_AGENT_API_KEY=${PICKABLE_AGENT_API_KEY:-}
+      - PICKABLE_SCANS_PER_HOUR=${PICKABLE_SCANS_PER_HOUR:-5}
+      - PICKABLE_GLOBAL_SCANS_PER_HOUR=${PICKABLE_GLOBAL_SCANS_PER_HOUR:-30}
     volumes:
       - ./data:/app/data
     networks:

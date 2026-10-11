@@ -1,0 +1,24 @@
+{
+  "specVersion": "1.0",
+  "host": {
+    "displayName": "Pickable",
+    "identifier": "solveny.dev",
+    "documentationUrl": "https://solveny.dev/docs"
+  },
+  "entries": [
+    {
+      "identifier": "urn:air:solveny.dev:mcp:pickable",
+      "type": "application/mcp-server-card+json",
+      "url": "https://solveny.dev/.well-known/mcp/server-card.json",
+      "description": "Read public Pickable scan history and reports for public websites.",
+      "displayName": "Pickable MCP server"
+    },
+    {
+      "identifier": "urn:air:solveny.dev:api:pickable-rest",
+      "type": "application/json",
+      "url": "https://solveny.dev/openapi.json",
+      "description": "OpenAPI 3.1 description of Pickable's REST and MCP HTTP interfaces.",
+      "displayName": "Pickable REST API"
+    }
+  ]
+}

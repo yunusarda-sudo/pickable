@@ -193,7 +193,18 @@ def safe_fetch(
 
                     redirect_chain.append(current_url)
                     # Resolve relative redirect URLs against current URL
-                    current_url = urllib.parse.urljoin(current_url, location)
+                    target = urllib.parse.urljoin(current_url, location)
+                    new = urllib.parse.urlparse(target)
+                    if parsed.scheme == "https" and new.scheme != "https":
+                        conn.close()
+                        raise SSRFBlocked("Redirect from HTTPS to HTTP is blocked")
+                    if (new.scheme, new.hostname, new.port) != (parsed.scheme, parsed.hostname, parsed.port):
+                        headers = {k: v for k, v in (headers or {}).items()
+                                   if k.lower() not in ("authorization", "cookie", "host")}
+                    if resp.status == 303 or (resp.status in (301, 302) and method == "POST"):
+                        method, body = "GET", None
+                        headers = {k: v for k, v in (headers or {}).items() if k.lower() != "content-type"}
+                    current_url = target
                     conn.close()
                     continue
 

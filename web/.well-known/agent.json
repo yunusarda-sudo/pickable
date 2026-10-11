@@ -1,0 +1,11 @@
+{
+  "name": "Pickable",
+  "description": "A public website-analysis demo that reports agent-readiness observations and basic marketing visibility checks.",
+  "documentation": "https://solveny.dev/docs/agent-scan",
+  "openapi": "https://solveny.dev/openapi.json",
+  "mcp": {
+    "url": "https://solveny.dev/mcp",
+    "transport": "streamable-http",
+    "protocolVersions": ["2025-06-18", "2025-03-26"]
+  }
+}

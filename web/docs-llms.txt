@@ -1,0 +1,13 @@
+# Pickable documentation
+
+> Run scans of public domain names, review source evidence, and interpret partial results.
+
+- [Getting started](https://solveny.dev/docs): website workflow, async behavior, queue and rate limits, score interpretation, and FAQ.
+- [About Pickable](https://solveny.dev/about): data sources and what a score does not prove.
+- [Agent integration](https://solveny.dev/docs/agent-scan): REST and MCP workflows, headers, negotiated protocol versions, and tools.
+- [Authentication notes](https://solveny.dev/auth.md): CSRF scope, bearer configuration, errors, and revocation.
+- [Pricing and limits](https://solveny.dev/pricing): current public demo and resource caps.
+- [Full reference](https://solveny.dev/llms-full.txt): complete machine-oriented docs.
+- [OpenAPI 3.1](https://solveny.dev/openapi.json): typed REST and MCP HTTP contract.
+
+Reports can be partial while sources run. Public read routes expose stored scan history and results; submit public domains only.

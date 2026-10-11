@@ -1,0 +1,361 @@
+{
+  "domain": "solveny.dev",
+  "url": "https://solveny.dev",
+  "score": 24,
+  "maxScore": 100,
+  "grade": "F",
+  "scannedAt": "2026-10-11T07:52:34.266+00:00",
+  "analysisStatus": "complete",
+  "observed_at": "2026-10-11T08:23:54.517959+00:00",
+  "source": "https://ora.ai/score/solveny.dev",
+  "weighted_summary": {
+    "discovery": "4/20",
+    "access": "7/30",
+    "usability": "11/40",
+    "payments": "N/A"
+  },
+  "layers": [
+    {
+      "id": "discovery",
+      "score": 2,
+      "maxScore": 10,
+      "gaps": [
+        {
+          "id": "ard-catalog",
+          "status": "fail",
+          "details": "No /.well-known/ard.json (and no legacy /.well-known/ai-catalog.json)"
+        },
+        {
+          "id": "agentic-search-specific",
+          "status": "fail",
+          "details": "Agent searched for \"solveny\" developer resources but found nothing relevant"
+        },
+        {
+          "id": "brand-search-accuracy",
+          "status": "fail",
+          "details": "solveny.dev was not in the top 10 for \"Pickable website scanner\""
+        },
+        {
+          "id": "wikipedia-presence",
+          "status": "fail",
+          "details": "No Wikipedia article or Wikidata entity found for \"solveny\" - creating a Wikipedia page and a Wikidata item with P856 = solveny.dev is the highest-impact step for AI search citation coverage"
+        },
+        {
+          "id": "npm-sdk-package",
+          "status": "fail",
+          "details": "No NPM or PyPI SDK package found"
+        },
+        {
+          "id": "agent-rules-repo",
+          "status": "fail",
+          "details": "Could not locate a public repo containing agent configs or rules. If our probes missed it, AI coding agents likely will too - link the repo from your homepage or docs so it's discoverable."
+        },
+        {
+          "id": "agent-plugins-repo",
+          "status": "fail",
+          "details": "No Agent Plugins manifest (plugin.json) found in discovered repos"
+        },
+        {
+          "id": "chatgpt-app-listed",
+          "status": "fail",
+          "details": "Not found in ChatGPT app directory"
+        }
+      ]
+    },
+    {
+      "id": "accessibility",
+      "score": 12,
+      "maxScore": 54,
+      "gaps": [
+        {
+          "id": "sitemap",
+          "status": "fail",
+          "details": "No sitemap found"
+        },
+        {
+          "id": "agent-discovery-file",
+          "status": "fail",
+          "details": "No agent discovery file found"
+        },
+        {
+          "id": "a2a-agent-card",
+          "status": "fail",
+          "details": "No A2A agent card found at /.well-known/agent-card.json"
+        },
+        {
+          "id": "skills-sh-listed",
+          "status": "fail",
+          "details": "No official skills self-published on skills.sh (34 community skills with potential relation to this domain found, but only self-published official skills count)"
+        },
+        {
+          "id": "pricing-md",
+          "status": "fail",
+          "details": "No pricing.md found - agents need machine-readable pricing to compare products and make purchase recommendations"
+        },
+        {
+          "id": "nlweb-schema-feeds",
+          "status": "fail",
+          "details": "No robots.txt found - cannot check for Schema Feeds"
+        },
+        {
+          "id": "mcp-well-known-discovery",
+          "status": "fail",
+          "details": "No MCP server URL discovered"
+        },
+        {
+          "id": "agent-mode-view",
+          "status": "fail",
+          "details": "?mode=agent returns same content as homepage (no dedicated agent view)"
+        },
+        {
+          "id": "link-headers-discovery",
+          "status": "fail",
+          "details": "No HTTP Link response headers (RFC 8288) found"
+        },
+        {
+          "id": "markdown-url-fallback",
+          "status": "fail",
+          "details": "Homepage does not support the .md suffix. Probed https://solveny.dev/index.md and it did not return markdown (expected text/markdown content-type or a heading-led non-HTML body). Serve /index.md so agents can fetch one canonical markdown URL for the site root."
+        },
+        {
+          "id": "modular-llms-txt",
+          "status": "fail",
+          "details": "No section-level llms.txt files found (optional)"
+        },
+        {
+          "id": "llms-txt-exists",
+          "status": "fail",
+          "details": "No llms.txt found at /llms.txt or /.well-known/llms.txt."
+        },
+        {
+          "id": "llms-txt-formatting",
+          "status": "fail",
+          "details": "No llms.txt found to evaluate quality"
+        },
+        {
+          "id": "json-ld",
+          "status": "fail",
+          "details": "No JSON-LD structured data found on homepage"
+        },
+        {
+          "id": "pricing-info",
+          "status": "fail",
+          "details": "No pricing page or pricing data found"
+        },
+        {
+          "id": "public-api-docs",
+          "status": "fail",
+          "details": "No public API or documentation page linked from homepage"
+        },
+        {
+          "id": "agent-instruction",
+          "status": "fail",
+          "details": "No agent instruction file with when-to-use guidance found"
+        },
+        {
+          "id": "skills-sh-quality",
+          "status": "fail",
+          "details": "No official skills on skills.sh to evaluate"
+        },
+        {
+          "id": "json-ld-entity-linking",
+          "status": "fail",
+          "details": "No JSON-LD found  - no entity linking possible"
+        },
+        {
+          "id": "metadata-completeness",
+          "status": "warning",
+          "details": "Only 1/4 metadata signals present - missing: canonical URL, og:image, og:type"
+        },
+        {
+          "id": "org-schema-completeness",
+          "status": "fail",
+          "details": "No JSON-LD found - Organization schema missing"
+        },
+        {
+          "id": "schema-type-breadth",
+          "status": "fail",
+          "details": "No extended schema types found - AI can only answer basic questions about this entity"
+        },
+        {
+          "id": "trust-anchors",
+          "status": "fail",
+          "details": "No trust anchor pages found with sufficient content (About, Contact, Privacy)"
+        },
+        {
+          "id": "markdown-link-alternate",
+          "status": "fail",
+          "details": "No sampled page advertises a markdown alternate. Add <link rel=\"alternate\" type=\"text/markdown\" href=\"...\"> (or the equivalent Link response header) pointing at a markdown twin of the page."
+        },
+        {
+          "id": "openapi-spec",
+          "status": "fail",
+          "details": "No OpenAPI/Swagger specification found"
+        },
+        {
+          "id": "developer-portal",
+          "status": "fail",
+          "details": "No developer portal found"
+        },
+        {
+          "id": "api-catalog-rfc9727",
+          "status": "fail",
+          "details": "No /.well-known/api-catalog found (RFC 9727)"
+        },
+        {
+          "id": "markdown-negotiation",
+          "status": "fail",
+          "details": "Missing markdown content negotiation. Homepage returned text/html when probed with Accept: text/markdown (expected text/markdown), and none of the well-known root paths (/llms.md, /auth.md, /agents.md, /developers.md, /api.md, /index.md, /skill.md, /agent.md, /developer.md) returned markdown. Cold-arrival agents that land on the homepage from web search cannot get a markdown representation - serve text/markdown on the homepage via Accept negotiation, or publish a static /llms.md at the root."
+        },
+        {
+          "id": "markdown-negotiation-vary",
+          "status": "fail",
+          "details": "Homepage https://solveny.dev does not meet the Markdown negotiation requirements: Accept: text/markdown returned text/html; charset=utf-8; Vary header missing Accept (got \"none\")"
+        },
+        {
+          "id": "agent-ua-markdown",
+          "status": "fail",
+          "details": "No probed bot User-Agent (GPTBot, ClaudeBot, ChatGPT-User, PerplexityBot, Google-Extended, Applebot-Extended, ora-agent, DeepSeekBot) receives markdown when requesting HTML. Optional: detect AI-bot UAs server-side and serve them a markdown representation directly."
+        }
+      ]
+    },
+    {
+      "id": "usability",
+      "score": 17,
+      "maxScore": 62,
+      "gaps": [
+        {
+          "id": "public-api",
+          "status": "fail",
+          "details": "No publicly reachable API surface detected (REST and GraphQL both absent or auth-gated)"
+        },
+        {
+          "id": "oauth-support",
+          "status": "fail",
+          "details": "No OAuth 2.0 or OpenID Connect support detected"
+        },
+        {
+          "id": "scoped-permissions",
+          "status": "fail",
+          "details": "No declared OAuth scopes, security schemes, or scoped-permission documentation found"
+        },
+        {
+          "id": "onboarding-friction",
+          "status": "fail",
+          "details": "High onboarding friction - no free tier, self-serve keys, or sandbox detected"
+        },
+        {
+          "id": "web-bot-auth-directory",
+          "status": "fail",
+          "details": "No /.well-known/http-message-signatures-directory found"
+        },
+        {
+          "id": "oauth-protected-resource",
+          "status": "fail",
+          "details": "No /.well-known/oauth-protected-resource found (RFC 9728)"
+        },
+        {
+          "id": "auth-md-exists",
+          "status": "fail",
+          "details": "No /auth.md found at site root"
+        },
+        {
+          "id": "auth-md-structure",
+          "status": "fail",
+          "details": "No /auth.md found at site root"
+        },
+        {
+          "id": "agent-auth-discovery-metadata",
+          "status": "fail",
+          "details": "Neither /.well-known/oauth-protected-resource nor /.well-known/oauth-authorization-server found. Probed: solveny.dev, api.solveny.dev."
+        },
+        {
+          "id": "agent-auth-www-authenticate",
+          "status": "fail",
+          "details": "No 401 with WWW-Authenticate: Bearer resource_metadata=... found. Probed [https://solveny.dev/api, https://solveny.dev/api/v1, https://solveny.dev/v1, https://solveny.dev/v2, https://solveny.dev/agent/identity, https://solveny.dev/agent/auth, https://api.solveny.dev/api, https://api.solveny.dev/api/v1, https://api.solveny.dev/v1, https://api.solveny.dev/v2, https://api.solveny.dev/agent/identity, https://api.solveny.dev/agent/auth]."
+        },
+        {
+          "id": "agent-auth-endpoints-reachable",
+          "status": "fail",
+          "details": "No agent_auth endpoint URIs found in AS metadata or /auth.md prose; nothing to probe"
+        },
+        {
+          "id": "mcp-server",
+          "status": "fail",
+          "details": "No MCP server or manifest found"
+        },
+        {
+          "id": "webmcp",
+          "status": "fail",
+          "details": "No WebMCP support detected - no tool-attribute forms and no document.modelContext / navigator.modelContext usage found (scanned 1 of 1 same-origin script bundle(s) for modelContext registrations)"
+        },
+        {
+          "id": "cli-tool",
+          "status": "fail",
+          "details": "No CLI tool found"
+        },
+        {
+          "id": "rest-sdk-packages",
+          "status": "fail",
+          "details": "No SDK packages found across language ecosystems"
+        },
+        {
+          "id": "nlweb-ask",
+          "status": "fail",
+          "details": "No NLWeb-conformant /ask endpoint found via GET or POST"
+        },
+        {
+          "id": "nlweb-streaming",
+          "status": "fail",
+          "details": "NLWeb /ask does not support SSE streaming via GET or POST"
+        },
+        {
+          "id": "mcp-server-card",
+          "status": "fail",
+          "details": "No MCP server card found (checked /.well-known/mcp/server-card.json, the site's ai-catalog.json, servers[].card in mcp.json, and <server>/server-card)"
+        },
+        {
+          "id": "mcp-multi-surface-coverage",
+          "status": "fail",
+          "details": "This bonus needs two MCP servers: one for your product so agents can take actions, and a separate one for your documentation so agents can answer questions from your docs."
+        },
+        {
+          "id": "sandbox-environment",
+          "status": "fail",
+          "details": "No sandbox or test environment found"
+        },
+        {
+          "id": "agent-friendly-404",
+          "status": "warning",
+          "details": "The nonexistent path https://solveny.dev/__ora-404-probe-n5l0pvl9 correctly returns HTTP 404. Partial credit: no Markdown error body was detected."
+        },
+        {
+          "id": "mcp-app-registry",
+          "status": "fail",
+          "details": "No MCP Apps support detected - this product has an in-agent UI surface but exposes no ui:// resources or tool UI metadata for agents to render."
+        },
+        {
+          "id": "a2ui-support",
+          "status": "fail",
+          "details": "No A2UI or generative UI support detected"
+        },
+        {
+          "id": "api-schema-analysis",
+          "status": "fail",
+          "details": "No API schema detected"
+        },
+        {
+          "id": "function-calling-compat",
+          "status": "fail",
+          "details": "No API spec found - function calling requires discoverable endpoints"
+        }
+      ]
+    },
+    {
+      "id": "payments",
+      "score": 0,
+      "maxScore": 0,
+      "gaps": []
+    }
+  ]
+}
