@@ -29,28 +29,55 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 function visibleText(node) {
   return [node.textContent || '', ...(node.children || []).map(visibleText)].join(' ');
 }
+function findClick(node) {
+  if (node.listeners && typeof node.listeners.click === 'function') return node;
+  for (const child of node.children || []) { const found = findClick(child); if (found) return found; }
+  return null;
+}
 const report = () => ({ domain: 'old.example', scanned_at: '2026-10-10T12:00:00Z', score: {total: 20, coverage: 10, breakdown: {}}, checks: [], sources: [], recommendations: [] });
 const jobs = [{id: 'a', domain: 'a.example'}, {id: 'b', domain: 'b.example'}];
 
-test('preliminary intelligence is clearly labeled while enrichment continues', () => {
+test('running intelligence shows a skeleton, never a preliminary stub as results', () => {
   const ui = setup(() => ({}));
   ui.renderIntelligence({status:'running', depth:'short', report:{analysis_stage:'preliminary',
     product_summary:'Ön bulgu: TeamFlow — Planning for distributed teams', target_customers:'Not verified',
     problem:'Not verified', value_proposition:'Not verified', competitive_landscape:'Not researched',
     workflows:[], evidence_refs:['homepage'], unknowns:[], sources:[{label:'TeamFlow', url:'https://example.com/'}]}});
-  assert.match(ui.get('intelligence-status').textContent, /Quick page summary/i);
-  assert.equal(ui.get('intelligence-summary').textContent, 'Ön bulgu: TeamFlow — Planning for distributed teams');
-  assert.equal(ui.get('intelligence-sources').children[0].href, 'https://example.com/');
+  assert.match(ui.get('intelligence-status').textContent, /Understanding your product/i);
+  assert.doesNotMatch(visibleText(ui.get('intelligence-details')), /Ön bulgu/);
+  assert.equal(ui.get('intelligence-sources').children.length, 0);
   assert.equal(ui.get('deep-analysis').disabled, true);
 });
 
-test('terminal partial intelligence does not claim enrichment is still running', () => {
+test('terminal partial intelligence shows an explicit error state with retry', () => {
   const ui = setup(() => ({}));
   ui.renderIntelligence({status:'partial', depth:'short', report:{analysis_stage:'preliminary',
     product_summary:'Page summary', target_customers:'Unknown', problem:'Unknown', value_proposition:'Unknown',
-    competitive_landscape:'Not researched', workflows:[], evidence_refs:['homepage'], unknowns:[]}});
-  assert.match(ui.get('intelligence-status').textContent, /Partial analysis/);
-  assert.doesNotMatch(ui.get('intelligence-status').textContent, /continues/i);
+    competitive_landscape:'Not researched', workflows:[], evidence_refs:['homepage'], unknowns:[]},
+    error:'TimeoutError: Request timed out: timed out'});
+  assert.match(ui.get('intelligence-status').textContent, /Needs retry/);
+  assert.match(visibleText(ui.get('intelligence-details')), /couldn't finish the product analysis/);
+  assert.doesNotMatch(visibleText(ui.get('intelligence-details')), /TimeoutError|timed out/);
+  assert.ok(findClick(ui.get('intelligence-details')), 'error card offers a retry action');
+  assert.equal(ui.get('deep-analysis').disabled, true);
+});
+
+test('failed intelligence never leaks raw backend errors', () => {
+  const ui = setup(() => ({}));
+  ui.renderIntelligence({status:'failed', error:'RuntimeError: boom\nTraceback (most recent call last): ...'});
+  assert.doesNotMatch(visibleText(ui.get('intelligence-panel')), /RuntimeError|Traceback|boom/);
+  assert.match(visibleText(ui.get('intelligence-details')), /couldn't finish/);
+});
+
+test('completed intelligence enables deep research', () => {
+  const ui = setup(() => ({}));
+  ui.renderIntelligence({status:'completed', depth:'short', report:{analysis_stage:'complete',
+    product_summary:'Acme does X.', target_customers:'Teams', problem:'Slow Y',
+    value_proposition:'Fast Y', competitive_landscape:'Crowded', workflows:['W1'],
+    unknowns:['pricing'], sources:[{label:'Home', url:'https://example.com/'}]}});
+  assert.equal(ui.get('deep-analysis').disabled, false);
+  assert.equal(ui.get('intelligence-summary').textContent, 'Acme does X.');
+  assert.match(visibleText(ui.get('intelligence-details')), /Needs verification: pricing/);
 });
 
 test('history selection clears previous evidence and download links before response', async () => {
@@ -118,17 +145,51 @@ test('initialization presents only the domain landing view before any scan', asy
   assert.equal(ui.state.token, 'test-token');
 });
 
-test('running scan shows a partial report as soon as one exists and keeps polling', async () => {
+test('running scan never renders a partial report; loading stays until terminal', async () => {
   const partial = report();
   const ui = setup(() => ({status:'running', sources:[{id:'cloudflare', status:'completed'}], report:partial}));
   await ui.loadScan('pending', ui.state.generation);
-  assert.equal(ui.get('loading-view').hidden, true);
-  assert.equal(ui.get('report-view').hidden, false);
-  assert.equal(ui.get('results').hidden, false);
+  assert.equal(ui.get('loading-view').hidden, false);
+  assert.equal(ui.get('report-view').hidden, true);
+  assert.equal(ui.get('results').hidden, true);
+  assert.equal(ui.state.report, null);
   assert.equal(ui.get('scan-button').disabled, true);
   assert.equal(ui.get('notice').textContent, '');
   assert.equal(ui.get('notice').hidden, true);
   assert.equal(ui.get('step-ora').lastElementChild.textContent, '');
+});
+
+test('failed or unscorable terminal scan enters the error view, never a report', async () => {
+  for (const payload of [{status:'failed', sources:[], report:null},
+                         {status:'interrupted', sources:[], report:null},
+                         {status:'completed', sources:[], report:{...report(), score:{total:null, coverage:0, breakdown:{}}} }]) {
+    const ui = setup(() => payload);
+    await ui.loadScan('x', ui.state.generation);
+    assert.equal(ui.get('error-view').hidden, false);
+    assert.equal(ui.get('report-view').hidden, true);
+    assert.equal(ui.get('scan-button').disabled, false);
+  }
+});
+
+test('loading poll cap terminates visibly instead of spinning forever', async () => {
+  const ui = setup(() => ({status:'running', sources:[], report:null}));
+  ui.state.loadPolls = 500;
+  await ui.loadScan('x', ui.state.generation);
+  assert.equal(ui.get('error-view').hidden, false);
+  assert.equal(ui.get('loading-view').hidden, true);
+});
+
+test('incomplete sources show a labeled banner, completed sources hide it', () => {
+  const ui = setup(() => ({}));
+  ui.state.jobId = 'j';
+  ui.renderReport(report(), [{status:'completed'}, {status:'failed'}]);
+  assert.equal(ui.get('report-view').hidden, false);
+  assert.equal(ui.get('report-warning').hidden, false);
+  ui.renderReport(report(), [{status:'completed'}]);
+  assert.equal(ui.get('report-warning').hidden, true);
+  const html = fs.readFileSync(path.join(__dirname, '../web/index.html'), 'utf8');
+  assert.match(html, /report is incomplete/);
+  assert.doesNotMatch(html.split('id="report-warning"')[1].split('</div>')[0], /Ora|Cloudflare/);
 });
 
 test('a non-final score is never displayed', () => {
@@ -284,7 +345,7 @@ test('customer report hides internal cache and source-disagreement metadata', ()
   assert.doesNotMatch(ui.get('action-list').textContent, /served_from_cache|result_age_seconds/);
 });
 
-test('agent readiness exposes checks grouped by score layer with plain-language meaning, provider, and recommendation', () => {
+test('agent readiness exposes checks with plain-language meaning and no provider names', () => {
   const ui = setup(() => ({}));
   const value = report();
   value.score.breakdown = {
@@ -314,7 +375,7 @@ test('agent readiness exposes checks grouped by score layer with plain-language 
   assert.match(text, /XML sitemap/);
   assert.match(text, /Missing/);
   assert.match(text, /A sitemap helps agents discover the pages on your site\./);
-  assert.match(text, /Cloudflare/);
+  assert.doesNotMatch(text, /Cloudflare|Ora|Evidence reported by/);
   assert.match(text, /Publish \/sitemap\.xml and reference it from robots\.txt\./);
   assert.match(text, /Markdown delivery/);
   assert.match(text, /Not evaluated/);

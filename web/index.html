@@ -71,16 +71,27 @@
             <li id="step-growth"><span class="step-icon" aria-hidden="true"></span>Social profiles &amp; blog activity<span class="step-state"></span></li>
             <li id="step-ora"><span class="step-icon" aria-hidden="true"></span>Agent discovery checks<span class="step-state"></span></li>
             <li id="step-cloudflare"><span class="step-icon" aria-hidden="true"></span>Agent compatibility checks<span class="step-state"></span></li>
+            <li id="step-intel"><span class="step-icon" aria-hidden="true"></span>Product analysis<span class="step-state"></span></li>
           </ul>
           <div class="loading-progress" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100"><div id="loading-progress-fill"></div></div>
           <button id="cancel-analysis" class="text-button">Back to start</button>
         </div>
       </div>
     </section>
+    <section id="error-view" class="error-view" aria-labelledby="error-title" hidden>
+      <div class="error-card">
+        <div class="eyebrow hero-kicker"><span class="live-dot"></span> ANALYSIS INTERRUPTED</div>
+        <h1 id="error-title" tabindex="-1">We couldn&rsquo;t complete your analysis.</h1>
+        <p>Please try again. If the problem persists, check that the site is publicly reachable.</p>
+        <p id="error-detail" class="error-detail" hidden></p>
+        <div class="error-actions"><button id="retry-analysis" class="retry-button" type="button">Retry analysis</button><button id="back-start" class="text-button" type="button">Back to start</button></div>
+      </div>
+    </section>
     <div id="report-view" class="report-view" hidden>
       <div class="report-nav"><button id="new-analysis" class="text-button">← New scan</button></div>
       <section id="results" hidden>
-        <div class="topline"><div class="domain"><div class="breadcrumbs"><span class="mode-normal">SCAN REPORT / MARKETING PLAYBOOK</span><span class="mode-agent">SCAN REPORT / AGENT READINESS</span></div><h2 id="report-domain" tabindex="-1"></h2><p id="report-time"></p></div><div class="actions"><button id="copy-summary" class="btn" type="button">Copy summary ↗</button><button id="new-analysis-top" class="btn dark" type="button">← New scan</button></div></div>
+        <div class="topline"><div class="domain"><div class="breadcrumbs"><span class="mode-normal">SCAN REPORT / MARKETING PLAYBOOK</span><span class="mode-agent">SCAN REPORT / AGENT READINESS</span></div><h2 id="report-domain" tabindex="-1"></h2><p id="report-time"></p></div>        <div class="actions"><button id="copy-summary" class="btn" type="button">Copy summary ↗</button><button id="new-analysis-top" class="btn dark" type="button">← New scan</button></div></div>
+        <div id="report-warning" class="report-warning" hidden><span>Some signals couldn&rsquo;t be checked, so this report is incomplete. What&rsquo;s shown reflects verified evidence only.</span><button id="rerun-scan" class="text-button" type="button">Re-run scan</button></div>
         <div id="marketing-report" class="mode-normal">
           <nav class="sectionnav" aria-label="Report sections"><a href="#mk-readiness">Playbook score</a><a href="#mk-actions">Next steps</a><a href="#mk-checks">Playbook checks</a><a href="#intelligence">Product intelligence</a></nav>
           <div id="mk-readiness" class="hero">

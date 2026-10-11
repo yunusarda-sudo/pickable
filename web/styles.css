@@ -213,6 +213,27 @@ body[data-mode="agent"] .mode-normal,body:not([data-mode="agent"]) .mode-agent{d
 .check-layout .finding-category .category-heading>div{display:block}
 .check-layout .finding-category .category-heading h3{margin:0 0 4px}
 .check-layout .finding-category .category-heading p{margin:0}
+
+/* Gating + error states: neutral copy, existing palette, no new system. */
+.error-view{min-height:calc(100svh - 100px);display:flex;align-items:center;justify-content:center;padding:40px 24px;text-align:center}
+.error-card{max-width:560px}
+.error-card h1{font-size:clamp(34px,4.5vw,54px);letter-spacing:-2.5px;margin:22px 0 14px}
+.error-card>p{font-size:15px;line-height:1.7;color:#aab0a3;margin:0 auto;max-width:44ch}
+.error-card .error-detail{font-size:13px;color:#e0c38c;margin-top:12px}
+.error-actions{display:flex;align-items:center;justify-content:center;gap:22px;margin-top:30px}
+.retry-button{background:var(--acid);color:#141714;border:0;border-radius:12px;padding:13px 26px;font-size:14px;font-weight:750;cursor:pointer}
+.retry-button:hover{filter:brightness(1.06)}
+.error-view .text-button{color:#c8d1bf}
+.report-warning{display:flex;align-items:center;justify-content:space-between;gap:14px;background:#fbf2df;border:1px solid #e5d3a8;border-radius:12px;padding:13px 16px;margin-bottom:20px;font-size:13px;color:#6b5316;line-height:1.6}
+.report-warning .text-button{color:#0f5f43;font-size:13px;flex-shrink:0;text-decoration:underline;text-underline-offset:4px}
+.intel-skeleton{display:grid;gap:12px;margin-top:16px}
+.intel-skeleton .skel{height:64px;border-radius:9px;background:linear-gradient(90deg,#eef1ea,#e0e7dd,#eef1ea);background-size:200% 100%;animation:shimmer 1.4s linear infinite}
+.intelligence-status-line{font-size:14px;color:#4c5f56;margin:12px 0 0}
+.intel-error{border:1px solid #e5d3a8;background:#fbf6ea;border-radius:12px;padding:22px;margin-top:16px}
+.intel-error h3{font-size:16px;color:#101f19;margin:0 0 8px}
+.intel-error p{font-size:13.5px;color:#4c5f56;line-height:1.7;margin:0 0 6px}
+.intel-error .text-button{color:#0f5f43;font-size:13px;text-decoration:underline;text-underline-offset:4px}
+@media(max-width:760px){.error-view{min-height:calc(100svh - 80px)}.report-warning{flex-direction:column;align-items:start}}
 .check-layout .finding-row{background:transparent;border:0;border-top:1px solid #edf0ed;border-radius:0;padding:0;margin:0}
 .check-layout .finding-row:first-of-type{border-top:0}
 .intelligence-section{padding-top:51px;scroll-margin-top:18px}

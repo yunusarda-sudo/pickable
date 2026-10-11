@@ -124,7 +124,12 @@ def public_job(job):
 
 
 def public_intelligence(job):
-    """Strict allowlist for customer-facing product analysis."""
+    """Strict allowlist for customer-facing product analysis.
+
+    Only the lifecycle status and the report content leave the server.
+    Model names, token usage, finish reasons and raw error text stay in
+    backend logs and internal diagnostics, never in user payloads.
+    """
     if not isinstance(job, dict): return None
     report = job.get("report")
     safe_report = None
@@ -143,16 +148,9 @@ def public_intelligence(job):
                 if isinstance(trace.get(key), int) or (key == "fallback_reason" and isinstance(trace.get(key), str))} or None
         else:
             safe_report.pop("research_trace", None)
-    usage = None
-    if any(isinstance(job.get(key), int) for key in ("input_tokens", "output_tokens", "total_tokens")):
-        usage = {key: job.get(key) for key in ("input_tokens", "output_tokens", "total_tokens") if isinstance(job.get(key), int)}
     status = job.get("status")
-    error = job.get("error") if status in ("failed", "partial", "unavailable", "interrupted") else None
     return {"id": job.get("id"), "depth": job.get("depth"), "status": status,
-            "created_at": job.get("created_at"), "finished_at": job.get("finished_at"), "report": safe_report,
-            "model": job.get("model") if isinstance(job.get("model"), str) else None,
-            "usage": usage, "finish_reason": job.get("finish_reason") if isinstance(job.get("finish_reason"), str) else None,
-            "error": error}
+            "created_at": job.get("created_at"), "finished_at": job.get("finished_at"), "report": safe_report}
 
 
 def demo_backend():
@@ -235,7 +233,11 @@ def live_backend(policy=None):
         scan = storage.get_job(scan_id)
         if not scan: return None
         if request_ip and scan.get("owner_ip") != request_ip: return None
-        if scan["status"] != "completed": raise ValueError("The site scan must finish before product analysis starts.")
+        # Short analysis only needs the domain, so it is queued while the
+        # readiness scan is still running (parallel). Terminally failed
+        # scans never start new analyses; an already-running one is simply
+        # ignored by the client.
+        if scan["status"] not in ("completed", "pending", "running"): raise ValueError("The site scan must finish before product analysis starts.")
         domain = scan["domain"]
         existing = storage.get_intelligence_job(scan_id, depth)
         if existing and existing["status"] in ("queued", "running"):
@@ -414,6 +416,14 @@ def live_backend(policy=None):
                 raise OverflowError("Too many scans are queued right now. Please try again shortly.")
             job_id = storage.create_job(domain, target_url or ("https://" + domain + "/"), owner_ip)
             pending.put_nowait((job_id, domain))
+            try:
+                # Product analysis needs only the domain, so it starts in
+                # parallel with the readiness scan instead of after it.
+                queue_intelligence(job_id, "short")
+            except Exception:
+                # Readiness must never fail because analysis queueing did;
+                # the client lazily re-queues short analysis on later polls.
+                pass
             return job_id
 
     def get(job_id, owner_ip=None):
@@ -485,7 +495,7 @@ def live_backend(policy=None):
                 previews.popitem(last=False)
             return value
 
-    return {"mode": "live", "intelligence_provider": getattr(provider, "provider", "openai"), "create": create, "get": get, "raw": raw, "list": list_jobs, "preview": preview,
+    return {"mode": "live", "create": create, "get": get, "raw": raw, "list": list_jobs, "preview": preview,
             "shutdown": shutdown,
             "intelligence": get_intelligence, "deep": start_deep}
 
@@ -684,8 +694,7 @@ def make_server(port, backend, bind="127.0.0.1", allowed_hosts=(), policy=None):
                 if path == "/":
                     content = content.replace(b"https://solveny.dev", policy.public_url.encode())
                 self.send(content, mime=mime); return
-            if path == "/api/config": self.send({"csrf_token": token, "mode": backend["mode"],
-                                                  "intelligence_provider": backend.get("intelligence_provider", "unavailable")}); return
+            if path == "/api/config": self.send({"csrf_token": token, "mode": backend["mode"]}); return
             if path == "/api/scans": self.send({"scans": backend["list"](self.client_ip)}); return
             parts = path.strip("/").split("/")
             if len(parts) >= 3 and parts[:2] == ["api", "scans"]:

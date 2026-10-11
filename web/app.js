@@ -1,6 +1,8 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
-const state = { report: null, jobId: null, token: null, generation: 0, config: null, intelligenceTimer: null, intelligenceDepth: "short", intelligenceMissingPolls: 0 };
+const state = { report: null, jobId: null, token: null, generation: 0, config: null, intelligenceTimer: null, intelligenceDepth: "short", intelligenceMissingPolls: 0, intelPolls: 0, intelCompleted: false, lastUrl: "", loadPolls: 0 };
+const MAX_LOAD_POLLS = 100; // ~3 minutes of backend polling before an explicit error state
+const MAX_INTEL_POLLS = 150; // product analysis must also terminate visibly, never spin forever
 const nativeLabels = { PASS: "Pass", FAIL: "Missing", WARNING: "Warning", UNKNOWN: "Not evaluated", NOT_APPLICABLE: "N/A", PENDING: "Waiting" };
 const sourceLabels = { completed: "Completed", partial: "Partial", running: "Running", pending: "Waiting", unavailable: "Unavailable", failed: "Error", timeout: "Timed out", interrupted: "Interrupted" };
 
@@ -20,10 +22,11 @@ function setView(view) {
   const changed = state.view !== view;
   state.view = view;
   if (view !== "report") $("results").hidden = true;
-  for (const name of ["landing", "loading", "report"]) $(name + "-view").hidden = name !== view;
+  for (const name of ["landing", "loading", "report", "error"]) $(name + "-view").hidden = name !== view;
   if (changed && view === "loading") $("loading-title").focus();
   if (changed && view === "report") $("report-domain").focus();
   if (changed && view === "landing") $("domain").focus();
+  if (changed && view === "error") $("error-title").focus();
 }
 
 function returnToLanding() {
@@ -32,9 +35,19 @@ function returnToLanding() {
 
 function clearReport() {
   clearTimeout(state.intelligenceTimer); state.intelligenceTimer = null;
-  state.intelligenceMissingPolls = 0;
+  state.intelligenceMissingPolls = 0; state.intelPolls = 0; state.intelCompleted = false; state.loadPolls = 0;
   state.report = null; state.jobId = null; state.renderedKey = null;
   $("results").hidden = true; $("empty-state").hidden = false;
+}
+
+function showError(detail) {
+  busy(false);
+  // Actionable backend messages (rate limits, validation) are shown;
+  // transport-level failures stay a neutral sentence, never raw errors.
+  const actionable = typeof detail === "string" && detail && detail !== NEUTRAL_ERROR;
+  $("error-detail").textContent = actionable ? detail : "";
+  $("error-detail").hidden = !actionable;
+  setView("error");
 }
 
 async function api(path, options = {}) {
@@ -42,9 +55,11 @@ async function api(path, options = {}) {
   if (options.body) { headers["Content-Type"] = "application/json"; if (state.token) headers["X-CSRF-Token"] = state.token; }
   const response = await fetch(path, { ...options, headers, signal: AbortSignal.timeout(20000) });
   const type = response.headers.get("content-type") || "";
-  if (!type.includes("application/json")) throw new Error("Backend is not ready. Expected a JSON API response.");
+  // Connectivity failures stay generic: backend-provided actionable errors
+  // (rate limits, validation) pass through below, raw transport details do not.
+  if (!type.includes("application/json")) throw new Error("Something went wrong. Please try again.");
   const data = await response.json();
-  if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : `Request failed (${response.status}).`);
+  if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Something went wrong. Please try again.");
   return data;
 }
 
@@ -90,7 +105,7 @@ function renderReportExperience(report) {
     if (check && check.scoring_status !== "FAIL") continue;
     if (check) covered.add(check.check_id);
     cards.push({check, title: check?.title || "Improve agent readiness", action: fix.recommendation,
-      source: check?.scoring_source || fix.source || null, providerRecommendation: fix.source === "cloudflare",
+      source: check?.scoring_source || fix.source || null,
       pickableAuthored: fix.source === "pickable"});
   }
   for (const check of model.actions) {
@@ -102,9 +117,10 @@ function renderReportExperience(report) {
   for (const [index, cardData] of cards.entries()) {
     const card = element("article", "action-card");
     card.append(element("span", "action-number", String(index + 1).padStart(2,"0")), element("h3", "", cardData.title));
-    if (cardData.pickableAuthored) card.append(element("span", "action-basis", "Pickable recommendation · evidence from " + (cardData.source === "cloudflare" ? "Cloudflare" : cardData.source === "ora" ? "Ora" : "site checks")));
-    else if (cardData.source === "cloudflare") card.append(element("span", "action-basis", cardData.providerRecommendation ? "Cloudflare recommendation" : "Evidence from Cloudflare · recommendation by Pickable"));
-    else if (cardData.source === "ora") card.append(element("span", "action-basis", "Evidence reported by Ora · recommended improvement"));
+    // Attribution stays honest without naming third parties: our own
+    // guidance is labeled as such, everything else is a plain suggestion.
+    if (cardData.pickableAuthored) card.append(element("span", "action-basis", "Suggested by Pickable"));
+    else card.append(element("span", "action-basis", "Recommended improvement"));
     card.append(element("p", "", cardData.action));
     $("action-list").append(card);
   }
@@ -124,7 +140,6 @@ function renderReadinessFindings(report) {
   const categoryLabels = {discovery: "Discoverability", content: "Content", usability: "Usability"};
   const categoryKeys = [...new Set([...Object.keys(layers), ...checks.map(check => check.category)])]
     .filter(category => Object.hasOwn(categoryLabels, category));
-  const providerNames = {ora: "Ora", cloudflare: "Cloudflare"};
   for (const category of categoryKeys) {
     const layer = layers[category] && typeof layers[category] === "object" ? layers[category]
       : {label: categoryLabels[category], points: null, max_points: 0, measured: 0,
@@ -147,8 +162,6 @@ function renderReadinessFindings(report) {
       const body = element("div", "finding-body");
       const meaning = scalar(check.measurement_definition) || checkGuidance[check.check_id]?.[0] || "This check is part of the layer score.";
       body.append(element("p", "finding-purpose", meaning));
-      const source = providerNames[check.scoring_source];
-      if (source) body.append(element("p", "finding-context", `Evidence reported by ${source}.`));
       if (check.scoring_status === "FAIL") {
         const fix = recommendations.find(item => item.check_id === check.check_id)?.recommendation || checkGuidance[check.check_id]?.[1];
         if (fix) body.append(element("p", "finding-context", `Recommended next step: ${fix}`));
@@ -241,11 +254,10 @@ function renderMarketing(marketing) {
       + "This doesn't mean your website has failed these checks or that your marketing setup is incomplete. "
       + "It means we don't yet have sufficient evidence to make a reliable assessment. "
       + "Your Marketing Playbook Score reflects how effectively your website supports essential marketing activities, including social media visibility and content publishing. "
-      + "A score will be calculated once sufficient evidence has been collected."
-      + (marketing.source?.error ? ` Details: ${marketing.source.error}` : "");
+      + "A score will be calculated once sufficient evidence has been collected.";
   } else {
     $("mk-headline").textContent = model.failed ? "There is room to grow." : model.uncertain ? "Good basics, incomplete picture." : "Your marketing basics look solid.";
-    $("mk-summary").textContent = marketing.source?.error ? `The marketing checks could not load your site: ${marketing.source.error}` : `${model.passed} of ${checks.length} playbook checks passed, ${model.failed} need work.`;
+    $("mk-summary").textContent = `${model.passed} of ${checks.length} playbook checks passed, ${model.failed} need work.`;
   }
   $("mk-counts").replaceChildren();
   for (const [count, label, tone] of [[model.passed,"Passed","positive"],[model.failed,"Missing","negative"],[unevaluated,"Not evaluated","neutral"]]) {
@@ -312,6 +324,7 @@ function resetPreview(domain) {
   $("preview-icon").hidden = true; $("preview-icon").removeAttribute("src");
   $("preview-card").hidden = false;
   updateSteps([]);
+  updateIntelStep("running");
 }
 function showPreview(preview) {
   if (!preview || typeof preview !== "object") return;
@@ -346,7 +359,7 @@ function setMode(mode) {
   try { localStorage.setItem("pickable-mode", state.mode); } catch {}
 }
 
-function renderReport(report) {
+function renderReport(report, sources = []) {
   state.report = report;
   $("empty-state").hidden = true; $("results").hidden = false;
   $("report-domain").textContent = report.domain;
@@ -365,38 +378,62 @@ function renderReport(report) {
   renderReportExperience(report);
   renderReadinessFindings(report);
   if (report.marketing) renderMarketing(report.marketing);
+  // A report with an unfinished source is labeled incomplete, never silent.
+  const incomplete = Array.isArray(sources) && sources.some((s) => s && s.status !== "completed");
+  $("report-warning").hidden = !incomplete;
   renderIntelligence(null);
   if (state.jobId) pollIntelligence(state.jobId, state.intelligenceDepth);
   setView("report");
 }
 
+function intelSkeleton() {
+  $("intelligence-summary").textContent = "";
+  const status = element("p", "intelligence-status-line", "Understanding your product…");
+  const blocks = element("div", "intel-skeleton");
+  for (let i = 0; i < 3; i++) blocks.append(element("div", "skel"));
+  $("intelligence-details").replaceChildren(status, blocks);
+  $("intelligence-sources").replaceChildren();
+}
+
+function intelError(kind) {
+  // kind "unavailable" means analysis cannot run at all (no retry offered);
+  // anything else is a real failure with a controlled retry, never raw errors.
+  const cord = element("div", "intel-error");
+  cord.append(element("h3", "", kind === "unavailable"
+    ? "Product analysis isn't available right now."
+    : "We couldn't finish the product analysis."));
+  cord.append(element("p", "", "The readiness results above are unaffected. Please try again."));
+  if (kind !== "unavailable") {
+    const button = element("button", "text-button", "Try again");
+    button.id = "intel-retry"; button.type = "button";
+    button.addEventListener("click", retryScan);
+    cord.append(button);
+  }
+  $("intelligence-summary").textContent = "";
+  $("intelligence-details").replaceChildren(cord);
+  $("intelligence-sources").replaceChildren();
+}
+
 function renderIntelligence(job) {
-  const panel = $("intelligence-panel");
-  panel.hidden = false;
   $("intelligence-details").replaceChildren(); $("intelligence-sources").replaceChildren();
   const status = job?.status || "queued";
-  const localModel = state.config?.intelligence_provider === "ollama";
-  const preliminary = job?.report?.analysis_stage === "preliminary";
-  $("intelligence-status").textContent = preliminary && ["queued", "running"].includes(status)
-    ? "Quick page summary · detailed analysis continues"
-    : ({queued:"Queued",running:"Reading the public site…",completed:"Based on public evidence",unavailable:"AI analysis is unavailable",failed:"Analysis could not finish",partial:"Partial analysis · quick page summary available",interrupted:"Analysis was interrupted · quick page summary available"})[status] || "Preparing analysis";
-  $("deep-analysis").textContent = localModel ? "Analyze this page in more detail ↗" : "Research deeper ↗";
-  $("deep-analysis").disabled = ["queued", "running"].includes(status)
-    || (status === "unavailable" && /not configured/i.test(String(job?.error || "")));
-  if (!job?.report) {
-    if (status === "unavailable") {
-      const notConfigured = /not configured/i.test(String(job?.error || ""));
-      $("intelligence-summary").textContent = notConfigured
-        ? "Product analysis is not enabled on this server. The readiness scores and marketing checks above are unaffected."
-        : "Product analysis unavailable. Pickable was unable to extract enough reliable information from this website to identify its core offering and intended audience.";
-      for (const [title, value] of [["Product positioning", "What the product does and which problem it aims to solve."], ["Target audience", "Which individuals, roles, or businesses the product appears to serve."], ["Value proposition", "What benefits the product communicates and how it differentiates itself."], ["Use cases", "Which real-world needs and workflows the product is designed to address."]]) {
-        const item = element("article", "intelligence-fact"); item.append(element("h3", "", title), element("p", "", value)); $("intelligence-details").append(item);
-      }
-      $("intelligence-sources").append(element("p", "intelligence-unknown", "Action: retry website analysis. No marketing weaknesses or opportunities have been confirmed for this website yet. Findings based on indirect evidence should be treated as hypotheses, not verified facts."));
-    } else $("intelligence-summary").textContent = status === "failed" ? "The readiness report is available; product analysis did not complete." : status === "interrupted" ? "The readiness report is available; product analysis was interrupted. Reload to resume." : "We are identifying the product, its audience, and the value described on your URL.";
-    if (job?.error) $("intelligence-sources").append(element("p", "intelligence-unknown", String(job.error).slice(0, 300)));
+  const done = status === "completed";
+  state.intelCompleted = done;
+  $("intelligence-status").textContent = ({queued: "Queued", running: "Understanding your product…",
+    completed: "Based on public evidence", unavailable: "Not available right now",
+    failed: "Needs retry", partial: "Needs retry", interrupted: "Needs retry"})[status] || "Preparing analysis";
+  updateIntelStep(status);
+  const deep = $("deep-analysis");
+  deep.textContent = job?.depth === "deep" && done ? "Deep research complete" : "Research deeper ↗";
+  // Deep research opens only on top of a successfully completed base analysis.
+  deep.disabled = !done || job?.depth === "deep";
+  if (!done) {
+    if (status === "unavailable" || (state.config?.mode === "demo" && !job)) intelError("unavailable");
+    else if (["failed", "partial", "interrupted"].includes(status)) intelError("failed");
+    else intelSkeleton();
     return;
   }
+  if (!job?.report) { intelError("failed"); return; }
   const report = job.report;
   $("intelligence-summary").textContent = report.product_summary;
   for (const [title, value] of [["Who it serves", report.target_customers], ["Problem addressed", report.problem], ["Value offered", report.value_proposition]]) {
@@ -414,43 +451,54 @@ function renderIntelligence(job) {
     const link = element("a", "intelligence-source", source.label || "Research source"); link.href = source.url; link.target = "_blank"; link.rel = "noopener noreferrer"; $("intelligence-sources").append(link);
   }
   if (report.research_note) $("intelligence-sources").append(element("p", "intelligence-unknown", report.research_note));
-  if (job.error && ["partial", "failed", "interrupted"].includes(job.status)) $("intelligence-sources").append(element("p", "intelligence-unknown", "Note: " + String(job.error).slice(0, 300)));
-  $("deep-analysis").textContent = job.depth === "deep"
-    ? (localModel ? "Detailed page analysis complete" : "Deep research requested ↗")
-    : (localModel ? "Analyze this page in more detail ↗" : "Research deeper ↗");
-  $("deep-analysis").disabled = job.depth === "deep" || ["queued", "running"].includes(status);
 }
 
 async function pollIntelligence(scanId, depth = "short") {
-  if (state.intelligenceDepth !== depth) state.intelligenceMissingPolls = 0;
-  clearTimeout(state.intelligenceTimer); state.intelligenceDepth = depth;
+  if (state.intelligenceDepth !== depth) { state.intelligenceDepth = depth; state.intelligenceMissingPolls = 0; state.intelPolls = 0; }
+  clearTimeout(state.intelligenceTimer);
+  // Product analysis must terminate visibly: after the cap, show the error
+  // state instead of polling forever.
+  if (state.intelPolls++ > MAX_INTEL_POLLS) {
+    if (state.jobId === scanId && ["report", "loading"].includes(state.view)) renderIntelligence({status: "failed"});
+    return;
+  }
   try {
     const data = await api(`/api/scans/${encodeURIComponent(scanId)}/intelligence${depth === "deep" ? "/deep" : ""}`);
-    if (state.jobId !== scanId || state.view !== "report") return;
+    if (state.jobId !== scanId || !["report", "loading"].includes(state.view)) return;
     const job = data.intelligence; renderIntelligence(job);
     if (job && ["queued", "running"].includes(job.status)) state.intelligenceTimer = setTimeout(() => pollIntelligence(scanId, depth), 1800);
     else if (!job && state.intelligenceMissingPolls++ < 6) state.intelligenceTimer = setTimeout(() => pollIntelligence(scanId, depth), 1200);
-    else if (!job) renderIntelligence({status:"failed"});
+    else if (!job) renderIntelligence({status: state.config?.mode === "demo" ? "unavailable" : "failed"});
   } catch {
     // Transient disconnect (laptop sleep, backend wake, proxy hiccup):
-    // keep the readiness report and retry polling instead of going empty.
-    if (state.jobId !== scanId || state.view !== "report") return;
+    // keep visible state and retry polling instead of going empty.
+    if (state.jobId !== scanId || !["report", "loading"].includes(state.view)) return;
     if (state.intelligenceMissingPolls++ < 8) state.intelligenceTimer = setTimeout(() => pollIntelligence(scanId, depth), 2500);
+    else renderIntelligence({status: "failed"});
   }
 }
 
+function updateIntelStep(status) {
+  const item = $("step-intel");
+  if (!item || !item.lastElementChild) return;
+  if (status === "completed") { item.className = "done"; item.lastElementChild.textContent = "Done"; }
+  else if (["failed", "partial", "interrupted", "unavailable"].includes(status)) { item.className = "failed"; item.lastElementChild.textContent = "Unavailable"; }
+  else { item.className = ""; item.lastElementChild.textContent = ""; }
+}
+
 async function requestDeepAnalysis() {
-  if (!state.jobId) return;
+  // Deep research opens only on top of a completed base analysis.
+  if (!state.jobId || !state.intelCompleted) return;
   $("deep-analysis").disabled = true;
   try {
-    const result = await api(`/api/scans/${encodeURIComponent(state.jobId)}/intelligence`, { method: "POST", body: "{}" });
+    await api(`/api/scans/${encodeURIComponent(state.jobId)}/intelligence`, { method: "POST", body: "{}" });
     state.intelligenceDepth = "deep";
-    notify(state.config?.intelligence_provider === "ollama"
-      ? "Detailed page analysis started. This local run does not search the web."
-      : "Deep research started. We will update this section when it is ready.");
+    notify("Deep research started. We will update this section when it is ready.");
     pollIntelligence(state.jobId, "deep");
   } catch (error) { $("deep-analysis").disabled = false; notify(error.message); }
 }
+
+const NEUTRAL_ERROR = "Something went wrong. Please try again.";
 
 async function loadScan(id, generation) {
   if (generation !== state.generation) return;
@@ -460,20 +508,50 @@ async function loadScan(id, generation) {
   const status = result.status || result.job?.status;
   updateSteps(result.sources);
   if (["pending", "queued", "running"].includes(status)) {
-    const key = JSON.stringify(result.sources || []);
-    if (result.report && key !== state.renderedKey) { state.renderedKey = key; renderReport(result.report); }
-    else if (!result.report) setView("loading");
+    // Gating: partial results are never rendered as a report. The loading
+    // view with real per-source progress stays until the job is terminal.
+    // A poll cap guarantees the loading state always terminates visibly.
+    if (state.loadPolls++ > MAX_LOAD_POLLS) { showError(""); refreshHistory(); return; }
+    setView("loading");
     $("loading-domain").textContent = scalar(result.domain || result.job?.domain, $("domain").value);
-    busy(true); notify(result.report ? "" : "Sources are running. This can take a minute; results update as they arrive.");
-    setTimeout(() => loadScan(id, generation).catch((error) => { if (generation === state.generation) { busy(false); setView("landing"); notify(error.message + " You can reopen the saved scan from history."); } }), 1800);
+    busy(true); notify("");
+    setTimeout(() => loadScan(id, generation).catch(() => { if (generation === state.generation) showError(""); }), 1800);
   } else {
-    if (result.report) renderReport(result.report); else setView("landing");
     busy(false);
-    const sources = result.report?.sources || result.sources || [];
-    const failed = Array.isArray(sources) && sources.filter((s) => s.status !== "completed");
-    notify(["failed", "interrupted"].includes(status) ? "The scan could not finish. Start a new scan to try again." : failed?.length ? "Some checks could not finish. Recommendations use the information available." : "");
+    const terminal = ["completed", "failed", "interrupted"].includes(status);
+    const measurable = result.report && result.report.score &&
+      result.report.score.total !== null && result.report.score.total !== undefined;
+    // Success means required fields are really filled: a terminal job whose
+    // score could not be measured is an explicit error, never a report.
+    if (!terminal || !measurable) showError("");
+    else { renderReport(result.report, result.sources); notify(""); }
     refreshHistory();
   }
+}
+
+async function startScan(url, generation) {
+  busy(true); notify("");
+  clearReport(); setView("loading"); $("loading-domain").textContent = url; resetPreview(url);
+  state.lastUrl = url; state.jobId = null;
+  try {
+    if (!state.config) throw new Error(NEUTRAL_ERROR);
+    const result = await api("/api/scans", { method: "POST", body: JSON.stringify({ url }) });
+    if (generation !== state.generation) return;
+    const id = result.job_id || result.id;
+    if (!id) throw new Error(NEUTRAL_ERROR);
+    state.jobId = id;
+    loadPreview(id, generation);
+    state.intelPolls = 0;
+    pollIntelligence(id, "short");
+    await loadScan(id, generation);
+  } catch (error) { if (generation === state.generation) showError(error.message); }
+}
+
+function retryScan() {
+  // Controlled retry: a fresh scan for the same URL. Recent analyses are
+  // reused server-side, so retries are cheap and never fabricate data.
+  if (!state.lastUrl) { returnToLanding(); return; }
+  startScan(state.lastUrl, ++state.generation);
 }
 
 async function refreshHistory() {
@@ -486,8 +564,12 @@ async function refreshHistory() {
       button.append(element("small", "", `${formatTime(job.created_at)} · ${sourceLabels[job.status] || job.status}`));
       button.addEventListener("click", () => {
         const generation = ++state.generation;
-        clearReport(); busy(true); $("history-dialog").close(); setView("loading"); $("loading-domain").textContent = job.domain; resetPreview(job.domain); loadPreview(job.id || job.job_id, generation); notify("Loading saved scan…");
-        loadScan(job.id || job.job_id, generation).catch((error) => { if (generation === state.generation) { busy(false); setView("landing"); notify(error.message); } });
+        const id = job.id || job.job_id;
+        state.lastUrl = job.domain;
+        clearReport(); busy(true); $("history-dialog").close(); setView("loading"); $("loading-domain").textContent = job.domain; resetPreview(job.domain); notify("Loading saved scan…");
+        state.jobId = id; state.intelPolls = 0; pollIntelligence(id, "short");
+        loadPreview(id, generation);
+        loadScan(id, generation).catch((error) => { if (generation === state.generation) showError(error.message); });
       });
       $("history").append(button);
     }
@@ -495,23 +577,16 @@ async function refreshHistory() {
   } catch (error) { $("history").replaceChildren(element("p", "", "Could not load history. Check the backend connection.")); }
 }
 
-$("scan-form").addEventListener("submit", async (event) => {
-  event.preventDefault(); const generation = ++state.generation; busy(true); notify("");
-  const url = $("domain").value.trim();
-  clearReport(); setView("loading"); $("loading-domain").textContent = url; resetPreview(url);
-  try {
-    if (!state.config) throw new Error("Backend is not ready. Reload the page or start the backend.");
-    const result = await api("/api/scans", { method: "POST", body: JSON.stringify({ url }) });
-    if (generation !== state.generation) return;
-    const id = result.job_id || result.id;
-    if (!id) throw new Error("Backend did not return a scan id.");
-    loadPreview(id, generation);
-    await loadScan(id, generation);
-  } catch (error) { if (generation === state.generation) { busy(false); setView("landing"); notify(error.message); } }
+$("scan-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  startScan($("domain").value.trim(), ++state.generation);
 });
 $("refresh-history").addEventListener("click", refreshHistory);
 $("new-analysis").addEventListener("click", returnToLanding);
 $("new-analysis-top").addEventListener("click", returnToLanding);
+$("retry-analysis").addEventListener("click", retryScan);
+$("rerun-scan").addEventListener("click", retryScan);
+$("back-start").addEventListener("click", returnToLanding);
 $("deep-analysis").addEventListener("click", requestDeepAnalysis);
 $("cancel-analysis").addEventListener("click", returnToLanding);
 $("open-history").addEventListener("click", () => { refreshHistory(); $("history-dialog").showModal(); });
