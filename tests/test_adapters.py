@@ -71,5 +71,75 @@ class TestAdapters(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(checks_by_id["sitemap_xml_exists"].status, "WARNING")
 
 
+def _ora_payload(status="pass", **overrides):
+    payload = {"layers": [{"id": "content", "checks": [
+        {"id": "llms-txt-exists", "status": status, "details": "TEST"}]}]}
+    payload.update(overrides)
+    return json.dumps(payload)
+
+
+def _ora_response(raw):
+    return FetchResult(status=200, headers={"Content-Type": "application/json"},
+                       body=raw.encode("utf-8"), redirect_chain=[], resolved_ips=["93.184.216.34"])
+
+
+class TestOraFreshness(unittest.IsolatedAsyncioTestCase):
+    async def scan_with(self, raws):
+        calls = []
+        responses = [_ora_response(raw) for raw in raws]
+
+        def fake_fetch(url, **kwargs):
+            calls.append((url, kwargs))
+            return responses[min(len(calls) - 1, len(responses) - 1)]
+
+        adapter = OraAdapter(api_key="test_key", base_url="https://ora.ai/api")
+        with patch("app.adapters.ora.safe_fetch", fake_fetch):
+            result = await adapter.scan("example.com", "job_1")
+        return result, calls
+
+    @staticmethod
+    def post_bodies(calls):
+        return [json.loads(call[1]["body"].decode("utf-8")) for call in calls]
+
+    async def test_stale_cache_triggers_single_forced_refresh(self):
+        stale = _ora_payload("fail", servedFromCache=True, resultAgeSeconds=9999)
+        fresh = _ora_payload("pass", scannedAt="2026-10-11T12:00:00Z")
+        result, calls = await self.scan_with([stale, fresh])
+
+        bodies = self.post_bodies(calls)
+        self.assertEqual(len(bodies), 2)
+        self.assertNotIn("force", bodies[0])
+        self.assertTrue(bodies[1].get("force"))
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.raw_report, fresh)
+
+    async def test_fresh_cache_is_reused_without_force(self):
+        cached = _ora_payload("pass", servedFromCache=True, resultAgeSeconds=10)
+        result, calls = await self.scan_with([cached])
+
+        bodies = self.post_bodies(calls)
+        self.assertEqual(len(bodies), 1)
+        self.assertNotIn("force", bodies[0])
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.raw_report, cached)
+
+    async def test_uncached_result_needs_no_refresh(self):
+        plain = _ora_payload("pass", scannedAt="2026-10-11T12:00:00Z")
+        result, calls = await self.scan_with([plain])
+
+        self.assertEqual(len(self.post_bodies(calls)), 1)
+        self.assertEqual(result.status, "completed")
+
+    async def test_persistently_stale_cache_is_used_after_one_refresh(self):
+        stale = _ora_payload("fail", servedFromCache=True, resultAgeSeconds=9999)
+        result, calls = await self.scan_with([stale, stale])
+
+        bodies = self.post_bodies(calls)
+        self.assertEqual(len(bodies), 2)
+        self.assertTrue(bodies[1].get("force"))
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.raw_report, stale)
+
+
 if __name__ == "__main__":
     unittest.main()

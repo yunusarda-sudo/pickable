@@ -15,6 +15,17 @@ from app.adapters.base import Adapter, AdapterResult, CheckRecord
 from app.config import Config
 from app.safe_fetch import safe_fetch, SafeFetchError
 
+# Ora caches per-domain snapshots for hours. A snapshot older than this is
+# refreshed once with force:true (one extra provider request, only when stale).
+STALE_AFTER_SECONDS = 600
+
+
+def _is_stale_snapshot(data: Any) -> bool:
+    if not isinstance(data, dict) or data.get("servedFromCache") is not True:
+        return False
+    age = data.get("resultAgeSeconds")
+    return not isinstance(age, (int, float)) or age > STALE_AFTER_SECONDS
+
 
 class TokenBucket:
     """Simple in-memory token bucket rate limiter: default 10 requests / minute."""
@@ -124,100 +135,111 @@ class OraAdapter(Adapter):
                 raise TimeoutError("Ora scan deadline exceeded")
             return remaining
 
-        allowance = remaining_timeout()
-        await asyncio.wait_for(self.rate_limiter.acquire(), timeout=allowance)
-
-        # Step 1: POST https://ora.ai/api/scan
-        scan_url = f"{self.base_url}/scan"
-        payload = json.dumps({"url": f"https://{domain}"}).encode("utf-8")
-
         loop = asyncio.get_running_loop()
-        try:
-            fetch_res = await loop.run_in_executor(
-                None,
-                lambda: safe_fetch(
-                    scan_url,
-                    method="POST",
-                    headers=headers,
-                    body=payload,
-                    timeout=remaining_timeout(),
-                ),
-            )
-        except SafeFetchError as e:
-            return AdapterResult(
-                source_id=self.source_id,
-                status="failed",
-                raw_report=None,
-                checks=[],
-                error=f"Ora scan request failed: {e}",
-            )
-        except Exception as e:
-            return AdapterResult(
-                source_id=self.source_id,
-                status="failed",
-                raw_report=None,
-                checks=[],
-                error=f"Ora scan unexpected error: {e}",
-            )
-
-        # Step 2: Handle 200 or 202
         raw_report_str: Optional[str] = None
         data: Optional[Dict[str, Any]] = None
+        # First attempt reuses Ora's cache; a stale snapshot is refreshed once.
+        for force in (False, True):
+            allowance = remaining_timeout()
+            await asyncio.wait_for(self.rate_limiter.acquire(), timeout=allowance)
 
-        if fetch_res.status == 200:
-            raw_report_str = fetch_res.body.decode("utf-8", errors="replace")
+            # Step 1: POST https://ora.ai/api/scan
+            scan_url = f"{self.base_url}/scan"
+            body = {"url": f"https://{domain}"}
+            if force:
+                body["force"] = True
+            payload = json.dumps(body).encode("utf-8")
+
             try:
-                data = json.loads(raw_report_str)
-            except json.JSONDecodeError:
-                pass
-        elif fetch_res.status == 202:
-            # Poll if poll_url provided, otherwise poll /score/{domain}
-            body_json = {}
-            try:
-                body_json = json.loads(fetch_res.body.decode("utf-8", errors="replace"))
-            except Exception:
-                pass
-
-            if not isinstance(body_json, dict):
-                raise ValueError("Ora returned an invalid polling response")
-            poll_url = urljoin(scan_url, body_json.get("poll_url") or f"{self.base_url}/score/{domain}")
-            expected_origin, poll = urlsplit(self.base_url), urlsplit(poll_url)
-            if ((poll.scheme, poll.hostname, poll.port) != (expected_origin.scheme, expected_origin.hostname, expected_origin.port)
-                    or poll.username is not None or poll.password is not None):
-                raise ValueError("Ora polling URL must remain on the configured provider origin")
-
-            # Polling loop
-            while True:
-                await asyncio.sleep(min(2, remaining_timeout()))
-                allowance = remaining_timeout()
-                await asyncio.wait_for(self.rate_limiter.acquire(), timeout=allowance)
-                poll_res = await loop.run_in_executor(
+                fetch_res = await loop.run_in_executor(
                     None,
                     lambda: safe_fetch(
-                        poll_url,
-                        method="GET",
+                        scan_url,
+                        method="POST",
                         headers=headers,
+                        body=payload,
                         timeout=remaining_timeout(),
                     ),
                 )
-                if poll_res.status == 200:
-                    raw_report_str = poll_res.body.decode("utf-8", errors="replace")
-                    try:
-                        data = json.loads(raw_report_str)
-                        if isinstance(data, dict) and data.get("status") not in ("pending", "running"):
+            except SafeFetchError as e:
+                return AdapterResult(
+                    source_id=self.source_id,
+                    status="failed",
+                    raw_report=None,
+                    checks=[],
+                    error=f"Ora scan request failed: {e}",
+                )
+            except Exception as e:
+                return AdapterResult(
+                    source_id=self.source_id,
+                    status="failed",
+                    raw_report=None,
+                    checks=[],
+                    error=f"Ora scan unexpected error: {e}",
+                )
+
+            # Step 2: Handle 200 or 202
+            raw_report_str = None
+            data = None
+
+            if fetch_res.status == 200:
+                raw_report_str = fetch_res.body.decode("utf-8", errors="replace")
+                try:
+                    data = json.loads(raw_report_str)
+                except json.JSONDecodeError:
+                    pass
+            elif fetch_res.status == 202:
+                # Poll if poll_url provided, otherwise poll /score/{domain}
+                body_json = {}
+                try:
+                    body_json = json.loads(fetch_res.body.decode("utf-8", errors="replace"))
+                except Exception:
+                    pass
+
+                if not isinstance(body_json, dict):
+                    raise ValueError("Ora returned an invalid polling response")
+                poll_url = urljoin(scan_url, body_json.get("poll_url") or f"{self.base_url}/score/{domain}")
+                expected_origin, poll = urlsplit(self.base_url), urlsplit(poll_url)
+                if ((poll.scheme, poll.hostname, poll.port) != (expected_origin.scheme, expected_origin.hostname, expected_origin.port)
+                        or poll.username is not None or poll.password is not None):
+                    raise ValueError("Ora polling URL must remain on the configured provider origin")
+
+                # Polling loop
+                while True:
+                    await asyncio.sleep(min(2, remaining_timeout()))
+                    allowance = remaining_timeout()
+                    await asyncio.wait_for(self.rate_limiter.acquire(), timeout=allowance)
+                    poll_res = await loop.run_in_executor(
+                        None,
+                        lambda: safe_fetch(
+                            poll_url,
+                            method="GET",
+                            headers=headers,
+                            timeout=remaining_timeout(),
+                        ),
+                    )
+                    if poll_res.status == 200:
+                        raw_report_str = poll_res.body.decode("utf-8", errors="replace")
+                        try:
+                            data = json.loads(raw_report_str)
+                            if isinstance(data, dict) and data.get("status") not in ("pending", "running"):
+                                break
+                        except json.JSONDecodeError:
                             break
-                    except json.JSONDecodeError:
-                        break
-            if not data or data.get("status") in ("pending", "running"):
-                raise TimeoutError("Ora scan polling timed out")
-        else:
-            return AdapterResult(
-                source_id=self.source_id,
-                status="failed",
-                raw_report=fetch_res.body.decode("utf-8", errors="replace"),
-                checks=[],
-                error=f"Ora API returned HTTP {fetch_res.status}",
-            )
+                if not data or data.get("status") in ("pending", "running"):
+                    raise TimeoutError("Ora scan polling timed out")
+            else:
+                return AdapterResult(
+                    source_id=self.source_id,
+                    status="failed",
+                    raw_report=fetch_res.body.decode("utf-8", errors="replace"),
+                    checks=[],
+                    error=f"Ora API returned HTTP {fetch_res.status}",
+                )
+
+            if _is_stale_snapshot(data) and not force:
+                continue
+            break
 
         if not isinstance(data, dict) or not data:
             return AdapterResult(
