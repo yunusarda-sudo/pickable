@@ -1,7 +1,7 @@
 import unittest
 import json
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from app.adapters.ora import OraAdapter, TokenBucket
 from app.adapters.cloudflare import CloudflareAdapter
 from app.safe_fetch import FetchResult
@@ -139,6 +139,33 @@ class TestOraFreshness(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(bodies[1].get("force"))
         self.assertEqual(result.status, "completed")
         self.assertEqual(result.raw_report, stale)
+
+    async def test_invalid_poll_response_fails_without_retrying(self):
+        for raw in ("[1,2]", "{bad"):
+            with self.subTest(raw=raw):
+                calls = []
+                responses = [
+                    FetchResult(status=202, headers={}, body=b'{}',
+                                redirect_chain=[], resolved_ips=["93.184.216.34"]),
+                    _ora_response(raw),
+                ]
+
+                def fake_fetch(*args, **kwargs):
+                    calls.append((args, kwargs))
+                    if len(calls) > len(responses):
+                        raise AssertionError("unexpected extra Ora poll")
+                    return responses[len(calls) - 1]
+
+                adapter = OraAdapter(api_key="test_key", base_url="https://ora.ai/api")
+                with patch("app.adapters.ora.safe_fetch", fake_fetch), \
+                     patch("app.adapters.ora.asyncio.sleep", new_callable=AsyncMock):
+                    result = await adapter.scan("example.com", "job_1")
+
+                self.assertEqual(result.status, "failed")
+                self.assertEqual(result.raw_report, raw)
+                self.assertEqual(result.checks, [])
+                self.assertIn("Invalid JSON response", result.error)
+                self.assertEqual(len(calls), 2)
 
 
 if __name__ == "__main__":
