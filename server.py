@@ -1,29 +1,43 @@
 """Pickable web server. Live mode scans via Ora; --demo serves synthetic fixtures."""
 import argparse
-import asyncio
-from collections import OrderedDict
-from datetime import datetime, timedelta, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import ipaddress
 import json
 import os
-from pathlib import Path
-import queue
 import secrets
 import socket
 import sys
 import threading
-import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from app.reporting import report_from_job
-from app.security import normalize_domain, normalize_site_url
 from app.agent_policy import AgentPolicy, RequestError, ScanLimiter, ScanRateLimitError
+from app.backends import MAX_QUEUED, demo_backend, live_backend
+from app.edge import (
+    DEFAULT_TRUSTED_PROXY_CIDRS,
+    _came_via_cloudflare,
+    _parse_trusted_proxies,
+    _peer_is_trusted,
+    _real_client_ip,
+)
 from app.pickable_agent_routes import serve_agent_get, serve_agent_post
+from app.presenters import public_intelligence, public_job, public_report
+from app.security import normalize_domain, normalize_site_url
+from app.waitlist import RateLimiter, RateLimitError, honeypot_filled, parse_event, parse_signup
 
-MAX_QUEUED = 20
+# Re-exported for backward compatibility (tests import these from server).
+__all__ = [
+    "BoundedHTTPServer", "make_server", "serve",
+    "demo_backend", "live_backend",
+    "public_report", "public_job", "public_intelligence",
+    "MAX_QUEUED",
+    "DEFAULT_TRUSTED_PROXY_CIDRS",
+    "_parse_trusted_proxies", "_peer_is_trusted",
+    "_real_client_ip", "_came_via_cloudflare",
+]
+
 REQUEST_TIMEOUT = 10
 
 
@@ -59,510 +73,13 @@ class BoundedHTTPServer(ThreadingHTTPServer):
             self.slots.release()
 
 
-def public_report(report):
-    """Return the customer report without provider payloads or source evidence blobs."""
-    if not isinstance(report, dict):
-        return None
-    checks = []
-    for check in report.get("checks", []) if isinstance(report.get("checks"), list) else []:
-        if not isinstance(check, dict):
-            continue
-        checks.append({key: check.get(key) for key in
-                       ("check_id", "title", "category", "measurement_definition", "scoring_status", "scoring_source", "combined_status")})
-    recommendations = []
-    for item in report.get("recommendations", []) if isinstance(report.get("recommendations"), list) else []:
-        if isinstance(item, str):
-            recommendations.append({"id": "", "recommendation": item[:3000], "check_id": None})
-        elif isinstance(item, dict) and isinstance(item.get("recommendation"), str):
-            source_id = item.get("id") if isinstance(item.get("id"), str) else ""
-            check = next((row for row in report.get("checks", []) if isinstance(row, dict) and any(
-                isinstance(obs, dict) and obs.get("source_check_id") == source_id
-                for obs in (row.get("sources") or {}).values())), None)
-            entry = {"id": source_id, "recommendation": item["recommendation"][:3000],
-                     "check_id": check.get("check_id") if check else item.get("check_id")}
-            if item.get("source") == "pickable":
-                entry["source"] = "pickable"
-            recommendations.append(entry)
-    marketing = report.get("marketing")
-    if isinstance(marketing, dict):
-        source = marketing.get("source")
-        marketing_score = marketing.get("score")
-        if isinstance(marketing_score, dict):
-            marketing_score = {key: marketing_score.get(key) for key in ("total", "grade", "coverage", "breakdown", "final", "label")}
-        marketing_checks = []
-        for check in marketing.get("checks", []) if isinstance(marketing.get("checks"), list) else []:
-            if not isinstance(check, dict):
-                continue
-            raw_details = check.get("details")
-            profiles = raw_details.get("profiles") if isinstance(raw_details, dict) else None
-            safe_profiles = {str(name): url for name, url in profiles.items()
-                             if isinstance(name, str) and isinstance(url, str)} if isinstance(profiles, dict) else {}
-            marketing_checks.append({key: check.get(key) for key in
-                                     ("check_id", "title", "category", "scoring_status", "scoring_source", "message", "measurement_definition")}
-                                    | {"details": {"profiles": safe_profiles} if safe_profiles else None})
-        marketing = {"score": marketing_score,
-                     "source": {key: source.get(key) for key in ("id", "status", "observed_at")}
-                     if isinstance(source, dict) else None,
-                     "checks": marketing_checks}
-    score = report.get("score")
-    if isinstance(score, dict):
-        score = {key: score.get(key) for key in ("total", "grade", "coverage", "breakdown", "final", "label")}
-    return {"schema_version": report.get("schema_version"),
-            "domain": report.get("domain"), "scanned_at": report.get("scanned_at"),
-            "checks": checks, "score": score if isinstance(score, dict) else None, "recommendations": recommendations,
-            "marketing": marketing}
-
-
-def public_job(job):
-    if not isinstance(job, dict):
-        return None
-    return {"id": job.get("id"), "domain": job.get("domain"), "created_at": job.get("created_at"),
-            "status": job.get("status"), "sources": [{key: source.get(key) for key in ("id", "status")}
-                                                       for source in job.get("sources", []) if isinstance(source, dict)],
-            "report": public_report(job.get("report")),
-            "intelligence": public_intelligence(job.get("intelligence"))}
-
-
-def public_intelligence(job):
-    """Strict allowlist for customer-facing product analysis.
-
-    Only the lifecycle status and the report content leave the server.
-    Model names, token usage, finish reasons and raw error text stay in
-    backend logs and internal diagnostics, never in user payloads.
-    """
-    if not isinstance(job, dict): return None
-    report = job.get("report")
-    safe_report = None
-    if isinstance(report, dict):
-        keys = ("analysis_stage", "product_summary", "target_customers", "problem", "value_proposition", "competitive_landscape", "workflows", "evidence_refs", "unknowns", "sources", "web_sources", "research_note", "research_trace")
-        safe_report = {key: report[key] for key in keys if key in report}
-        safe_report["sources"] = [{"label": row.get("label"), "url": row.get("url"), "retrieved_at": row.get("retrieved_at"), "sha256": row.get("sha256")}
-                                   for row in safe_report.get("sources", []) if isinstance(row, dict) and isinstance(row.get("url"), str)]
-        safe_report["web_sources"] = [{"label": row.get("label"), "url": row.get("url")}
-                                       for row in safe_report.get("web_sources", []) if isinstance(row, dict) and isinstance(row.get("url"), str) and row["url"].startswith("https://")][:12]
-        trace = safe_report.get("research_trace")
-        if isinstance(trace, dict):
-            safe_report["research_trace"] = {
-                key: trace.get(key) for key in
-                ("search_calls", "raw_results", "parsed_sources", "report_citations", "fallback_reason", "latency_ms")
-                if isinstance(trace.get(key), int) or (key == "fallback_reason" and isinstance(trace.get(key), str))} or None
-        else:
-            safe_report.pop("research_trace", None)
-    status = job.get("status")
-    return {"id": job.get("id"), "depth": job.get("depth"), "status": status,
-            "created_at": job.get("created_at"), "finished_at": job.get("finished_at"), "report": safe_report}
-
-
-def demo_backend():
-    sys.path.insert(0, str(ROOT / "tests"))
-    from ui_fixture import fixture_runs
-    jobs = {}
-
-    def create(domain, target_url=None, owner_ip=None):
-        if len(jobs) >= 30:
-            raise OverflowError("Demo session is limited to 30 reports; restart the server.")
-        job_id = secrets.token_hex(12)
-        report = report_from_job({"domain": domain}, fixture_runs())
-        jobs[job_id] = {"id": job_id, "domain": domain, "owner_ip": owner_ip, "created_at": datetime.now(timezone.utc).isoformat(), "status": "completed", "sources": report["sources"], "report": report}
-        return job_id
-
-    def raw(job_id, source):
-        return next((r["raw_report"] for r in fixture_runs() if r["source_id"] == source), None) if job_id in jobs else None
-
-    preview = lambda job_id: job_id in jobs and {"url": f"https://{jobs[job_id]['domain']}/", "title": "Example Domain (test data)", "description": "Demo mode does not fetch the site.", "image": None, "icon": None}
-    def get(job_id, owner_ip=None):
-        item = jobs.get(job_id)
-        return public_job(item) if item and (owner_ip is None or item.get("owner_ip") == owner_ip) else None
-    return {"mode": "demo", "create": create, "get": get, "raw": raw, "preview": preview,
-            "intelligence": lambda job_id, depth="short": None, "deep": lambda job_id, owner_ip=None: None,
-            "list": lambda owner_ip=None: [{k: v for k, v in job.items() if k not in ("report", "sources", "owner_ip")}
-                for job in reversed(list(jobs.values())) if owner_ip is None or job.get("owner_ip") == owner_ip]}
-
-
-def live_backend(policy=None):
-    from app.adapters.cloudflare import CloudflareAdapter
-    from app.adapters.growth import GrowthAdapter
-    from app.adapters.ora import OraAdapter
-    from app.agent_policy import AgentPolicy
-    from app.config import Config
-    from app.orchestrator import Orchestrator
-    from app.storage import Storage
-    policy = policy or AgentPolicy.from_env()
-    storage = Storage(Config.DB_PATH)
-    orchestrator = Orchestrator(adapters=[OraAdapter(), CloudflareAdapter(), GrowthAdapter()], storage=storage)
-    pending = queue.Queue(maxsize=MAX_QUEUED)
-    admission_lock = threading.Lock()
-    intelligence_pending = queue.Queue(maxsize=MAX_QUEUED)
-    stop_workers = threading.Event()
-    shutdown_lock = threading.Lock()
-    storage_closed = False
-    # Spend guard: in-flight (domain, depth) analyses. A repeat visitor for a
-    # site that is already being analyzed never triggers a second model call:
-    # readers simply retry on the next poll and then hit the reuse path above.
-    # Best-effort by design; a missed join only ever costs one extra call,
-    # never correctness. Nothing here blocks an HTTP handler: read paths and
-    # the scan worker return immediately and let the UI poll again.
-    flight_lock = threading.Lock()
-    flight = set()
-    from app.intelligence import IntelligenceProvider, evidence_pages, fetch_evidence
-
-    provider = IntelligenceProvider()
-
-    def intelligence_model(depth):
-        model_for = getattr(provider, "model_for", None)
-        return model_for(depth) if callable(model_for) else provider.model
-
-    def _reuse_cutoff():
-        if not policy.intel_reuse_hours:
-            return None
-        return (datetime.now(timezone.utc) - timedelta(hours=policy.intel_reuse_hours)).isoformat()
-
-    def _try_reuse(scan_id, domain, depth):
-        """Copy a recent completed same-domain analysis; no model call. Returns job_id or None."""
-        cutoff = _reuse_cutoff()
-        if cutoff is None:
-            return None
-        hit = storage.find_completed_intelligence(domain, depth, cutoff)
-        if not isinstance(hit, dict):
-            return None
-        job_id, _ = storage.create_intelligence_job(scan_id, depth, intelligence_model(depth))
-        storage.update_intelligence_job(job_id, "completed", report=hit)
-        return job_id
-
-    def queue_intelligence(scan_id, depth="short", request_ip=None):
-        scan = storage.get_job(scan_id)
-        if not scan: return None
-        if request_ip and scan.get("owner_ip") != request_ip: return None
-        # Short analysis only needs the domain, so it is queued while the
-        # readiness scan is still running (parallel). Terminally failed
-        # scans never start new analyses; an already-running one is simply
-        # ignored by the client.
-        if scan["status"] not in ("completed", "pending", "running"): raise ValueError("The site scan must finish before product analysis starts.")
-        domain = scan["domain"]
-        existing = storage.get_intelligence_job(scan_id, depth)
-        if existing and existing["status"] in ("queued", "running"):
-            return existing["id"]
-        reused = _try_reuse(scan_id, domain, depth)
-        if reused: return reused
-        key = (domain, depth)
-        with flight_lock:
-            in_flight = key in flight
-        if not in_flight:
-            # Cross-process guard: another worker process may hold the
-            # in-flight analysis in the shared SQLite file.
-            try:
-                in_flight = storage.has_inflight_intelligence(domain, depth)
-            except Exception:
-                pass
-        if in_flight:
-            if depth == "deep":
-                raise OverflowError("Deep analysis for this site is already running; please try again shortly.")
-            # Short analyses are retried by the next UI poll, which then hits reuse.
-            return None
-        if depth == "deep":
-            today = datetime.now(timezone.utc).date().isoformat()
-            claimed = storage.try_claim_deep_budget(scan_id, intelligence_model(depth), today, policy.deep_per_day)
-            if claimed is None:
-                raise ValueError("Today's deep-research budget is used up. The short analysis above remains available; try deep again tomorrow.")
-            with flight_lock:
-                flight.add(key)
-            try: intelligence_pending.put_nowait((claimed, scan_id, depth))
-            except queue.Full:
-                with flight_lock: flight.discard(key)
-                storage.update_intelligence_job(claimed, "unavailable", error="Intelligence queue is full.")
-                raise OverflowError("Deep analysis queue is full; try again shortly.")
-            return claimed
-        if not getattr(provider, "available", True):
-            # No analysis backend configured (e.g. no Ollama/OpenAI): record that
-            # plainly instead of queueing work that can never succeed. Cached
-            # reuse above still applies, so previously completed analyses stay visible.
-            job_id, _ = storage.create_intelligence_job(scan_id, depth, intelligence_model(depth))
-            storage.update_intelligence_job(job_id, "unavailable",
-                                            error=getattr(provider, "unavailable_reason", None)
-                                            or "Product analysis is not configured on this server.")
-            if depth == "deep": raise RuntimeError("Product analysis is not configured on this server.")
-            return job_id
-        job_id, created = storage.create_intelligence_job(scan_id, depth, intelligence_model(depth))
-        if created:
-            with flight_lock:
-                flight.add(key)
-            try: intelligence_pending.put_nowait((job_id, scan_id, depth))
-            except queue.Full:
-                with flight_lock: flight.discard(key)
-                storage.update_intelligence_job(job_id, "unavailable", error="Intelligence queue is full.")
-                if depth == "deep": raise OverflowError("Deep analysis queue is full; try again shortly.")
-        return job_id
-
-    def intelligence_worker():
-        while not stop_workers.is_set():
-            try:
-                analysis_id, scan_id, depth = intelligence_pending.get(timeout=0.1)
-            except queue.Empty:
-                continue
-            evidence = None
-            preliminary = None
-            flight_key = None
-            try:
-                scan = storage.get_job(scan_id)
-                if scan:
-                    flight_key = (scan.get("domain"), depth)
-                storage.update_intelligence_job(analysis_id, "running")
-                from app.intelligence import quick_analysis
-                def publish_homepage_summary(homepage):
-                    nonlocal preliminary
-                    preliminary = quick_analysis(homepage)
-                    storage.update_intelligence_job(analysis_id, "running", report=preliminary)
-
-                evidence = fetch_evidence(scan.get("target_url") or scan["domain"],
-                                          extra_pages=3 if depth == "deep" else 1,
-                                          on_homepage=publish_homepage_summary)
-                if preliminary is None:
-                    preliminary = quick_analysis(evidence)
-                    storage.update_intelligence_job(analysis_id, "running", report=preliminary)
-                report = provider.analyze(evidence, depth, {"domain": scan["domain"], "status": scan["status"]})
-                report["analysis_stage"] = "complete"
-                report["sources"] = [{"label": (page.get("title") or page.get("ref") or "Public page")[:180],
-                                      "url": page["url"], "retrieved_at": page.get("retrieved_at"), "sha256": page.get("sha256")}
-                                     for page in evidence_pages(evidence) if isinstance(page.get("url"), str)]
-                if depth == "deep" and len(report["unknowns"]) < 12:
-                    report["unknowns"].append("Competitor findings need explicit source-level review before they can be treated as verified.")
-                storage.update_intelligence_job(analysis_id, "completed", report=report,
-                                                usage=getattr(provider, "last_usage", None),
-                                                finish_reason=getattr(provider, "last_finish", None))
-            except Exception as error:
-                # API-side work must never leave the client empty-handed:
-                # keep the published preliminary summary and record the cause.
-                finish = getattr(provider, "last_finish", None)
-                usage = getattr(provider, "last_usage", None)
-                detail = f"{type(error).__name__}: {error}"
-                if isinstance(finish, str) and finish:
-                    detail += f" (finish={finish})"
-                status = "partial" if preliminary is not None else "failed"
-                storage.update_intelligence_job(analysis_id, status, report=preliminary,
-                                                error=detail[:1000], usage=usage,
-                                                finish_reason=finish if isinstance(finish, str) else None)
-            finally:
-                intelligence_pending.task_done()
-                if flight_key is not None:
-                    with flight_lock:
-                        flight.discard(flight_key)
-
-    intelligence_thread = threading.Thread(target=intelligence_worker, daemon=True, name="pickable-intelligence-worker")
-    intelligence_thread.start()
-
-    def worker():
-        # ponytail: one scan at a time on one event loop (keeps Ora's rate limiter shared); add workers if queue waits get long
-        loop = asyncio.new_event_loop()
-        while not stop_workers.is_set():
-            try:
-                job_id, domain = pending.get(timeout=0.1)
-            except queue.Empty:
-                continue
-            try:
-                if job_id is None:
-                    continue
-                loop.run_until_complete(orchestrator.run_scan(domain, job_id))
-                try:
-                    queue_intelligence(job_id, "short")
-                except Exception:
-                    # The readiness scan itself is complete; a full intelligence
-                    # queue must not retroactively fail it. The client can retry
-                    # short analysis via GET (lazy ensure) or deep via POST.
-                    pass
-            except Exception as error:
-                storage.update_job_status(job_id, "failed", error=f"{type(error).__name__}: {error}")
-            finally:
-                pending.task_done()
-        loop.close()
-
-    scan_thread = threading.Thread(target=worker, daemon=True, name="pickable-scan-worker")
-    scan_thread.start()
-
-    def shutdown():
-        """Stop backend workers and close their SQLite connection after in-flight work finishes."""
-        nonlocal storage_closed
-        with shutdown_lock:
-            if storage_closed:
-                return
-        stop_workers.set()
-        with flight_lock:
-            flight.clear()
-        # Workers poll with timeout (scan) or 0.1s (intelligence), so they
-        # always observe stop_workers even if the sentinel is lost because the
-        # queue was full. The sentinel only wakes an idle worker faster.
-        # No worker may touch storage after this point: callers must stop
-        # issuing create/get/deep calls before shutdown, and the DB file must
-        # not be deleted until shutdown returns.
-        for _ in range(2):
-            try:
-                pending.put_nowait((None, None))
-            except queue.Full:
-                break
-        scan_thread.join(timeout=10)
-        intelligence_thread.join(timeout=10)
-        alive = [thread.name for thread in (scan_thread, intelligence_thread) if thread.is_alive()]
-        if alive:
-            raise TimeoutError("Backend workers did not stop: " + ", ".join(alive))
-        with shutdown_lock:
-            if not storage_closed:
-                with storage._lock:
-                    storage.conn.close()
-                    storage._closed = True
-                storage_closed = True
-
-    def create(domain, target_url=None, owner_ip=None):
-        with admission_lock:
-            if pending.full():
-                raise OverflowError("Too many scans are queued right now. Please try again shortly.")
-            job_id = storage.create_job(domain, target_url or ("https://" + domain + "/"), owner_ip)
-            pending.put_nowait((job_id, domain))
-            try:
-                # Product analysis needs only the domain, so it starts in
-                # parallel with the readiness scan instead of after it.
-                queue_intelligence(job_id, "short")
-            except Exception:
-                # Readiness must never fail because analysis queueing did;
-                # the client lazily re-queues short analysis on later polls.
-                pass
-            return job_id
-
-    def get(job_id, owner_ip=None):
-        job = storage.get_job(job_id)
-        if not job:
-            return None
-        if owner_ip and job.get("owner_ip") != owner_ip: return None
-        runs = storage.get_source_runs(job_id)
-        running = job["status"] in ("pending", "running")
-        pending = [a.source_id for a in orchestrator.adapters if running and a.source_id not in {r["source_id"] for r in runs}]
-        report = report_from_job(job, runs, pending) if runs else None
-        intel = storage.get_intelligence_job(job_id, "short")
-        if intel is None and job["status"] == "completed":
-            try:
-                queue_intelligence(job_id, "short")
-                intel = storage.get_intelligence_job(job_id, "short")
-            except Exception:
-                pass
-        return {"id": job["id"], "domain": job["domain"], "created_at": job["started_at"], "status": job["status"],
-                "sources": [{"id": r["source_id"], "status": r["status"]} for r in runs],
-                "report": public_report(report) if report else None,
-                "intelligence": public_intelligence(intel)}  # partial: render as soon as the first source lands
-
-    def get_intelligence(job_id, depth="short"):
-        if not storage.get_job(job_id): return None
-        job = storage.get_intelligence_job(job_id, depth)
-        if job is None and depth == "short":
-            # Server restart (or a full queue) may have skipped the auto-queued
-            # short analysis. Lazily resume it via the API so the UI never
-            # stays empty just because the browser was closed mid-run.
-            try:
-                queue_intelligence(job_id, "short")
-                job = storage.get_intelligence_job(job_id, depth)
-            except Exception:
-                pass
-        return public_intelligence(job)
-
-    def start_deep(job_id, owner_ip=None):
-        return queue_intelligence(job_id, "deep", owner_ip)
-
-    def raw(job_id, source):
-        run = next((r for r in storage.get_source_runs(job_id) if r["source_id"] == source), None)
-        try:
-            return json.loads(run["raw_report"]) if run and run["raw_report"] else None
-        except ValueError:
-            return None
-
-    def list_jobs(owner_ip=None):
-        rows = storage.list_jobs()
-        return [{"id": r["id"], "domain": r["domain"], "status": r["status"], "created_at": r["started_at"]}
-                for r in rows if owner_ip is None or r.get("owner_ip") == owner_ip]
-
-    from app.adapters.growth import fetch_preview
-    previews = OrderedDict()
-    preview_lock = threading.Lock()
-
-    def preview(job_id):
-        # Cache misses/failures too, so repeated agent reads do not repeat outbound fetches.
-        with preview_lock:
-            cached = previews.get(job_id)
-            if cached and time.monotonic() - cached[0] < 300:
-                previews.move_to_end(job_id)
-                return cached[1]
-            job = storage.get_job(job_id)
-            value = fetch_preview(job["domain"]) if job else None
-            previews[job_id] = (time.monotonic(), value)
-            previews.move_to_end(job_id)
-            while len(previews) > 128:
-                previews.popitem(last=False)
-            return value
-
-    return {"mode": "live", "create": create, "get": get, "raw": raw, "list": list_jobs, "preview": preview,
-            "shutdown": shutdown,
-            "intelligence": get_intelligence, "deep": start_deep}
-
-
-DEFAULT_TRUSTED_PROXY_CIDRS = ("127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
-
-
-def _parse_trusted_proxies(raw):
-    """Parse TRUSTED_PROXIES env (comma/space separated IPs or CIDRs)."""
-    networks = []
-    for part in (raw or "").replace(",", " ").split():
-        try:
-            networks.append(ipaddress.ip_network(part, strict=False))
-        except ValueError:
-            continue
-    if not networks:
-        networks = [ipaddress.ip_network(c) for c in DEFAULT_TRUSTED_PROXY_CIDRS]
-    return tuple(networks)
-
-
-def _peer_is_trusted(peer_ip, trusted):
-    try:
-        addr = ipaddress.ip_address(peer_ip)
-    except ValueError:
-        return False
-    return any(addr in net for net in trusted)
-
-
-def _real_client_ip(handler, trusted):
-    """Resolve the client IP behind Traefik/Cloudflare.
-
-    Forwarding headers are honored ONLY when the direct TCP peer is a trusted
-    proxy (docker/loopback by default). Direct internet clients cannot spoof.
-    Prefers CF-Connecting-IP (Cloudflare-canonical), then X-Forwarded-For.
-    """
-    peer = handler.client_address[0]
-    if not _peer_is_trusted(peer, trusted):
-        return peer
-    cf_ip = (handler.headers.get("CF-Connecting-IP") or "").strip()
-    if cf_ip:
-        try:
-            ipaddress.ip_address(cf_ip)
-            return cf_ip
-        except ValueError:
-            pass
-    xff = handler.headers.get("X-Forwarded-For") or ""
-    first = xff.split(",")[0].strip()
-    if first:
-        try:
-            ipaddress.ip_address(first)
-            return first
-        except ValueError:
-            pass
-    return peer
-
-
-def _came_via_cloudflare(handler):
-    """True when Cloudflare edge headers are present (Ray/Connecting-IP/Visitor)."""
-    return bool(handler.headers.get("CF-Ray") or handler.headers.get("CF-Connecting-IP")
-                or handler.headers.get("CF-Visitor") or handler.headers.get("CF-IPCountry"))
-
-
 def make_server(port, backend, bind="127.0.0.1", allowed_hosts=(), policy=None):
     token = secrets.token_urlsafe(32)
     policy = policy or AgentPolicy.from_env()
     limiter = ScanLimiter(policy)
     deep_limiter = ScanLimiter(AgentPolicy(scans_per_hour=10, global_scans_per_hour=30))
+    waitlist_limiter = RateLimiter(per_peer=10, per_hour=60, message="Too many waitlist signups from this address. Please try again later.")
+    event_limiter = RateLimiter(per_peer=120, per_hour=1000, message="Too many requests from this address. Please try again later.")
     trusted_proxies = _parse_trusted_proxies(os.environ.get("TRUSTED_PROXIES", ""))
     # When "1": drop direct-to-origin requests that bypassed the CDN edge.
     # Health checks stay open so the orchestrator/loadbalancer can probe.
@@ -612,6 +129,17 @@ def make_server(port, backend, bind="127.0.0.1", allowed_hosts=(), policy=None):
         def setup(self):
             self.request.settimeout(REQUEST_TIMEOUT)
             super().setup()
+
+        def _record_event(self, name, source):
+            # Signup outcome logging is best-effort: a storage hiccup must never
+            # turn an otherwise successful signup into an error response.
+            recorder = backend.get("record_event")
+            if recorder is None:
+                return
+            try:
+                recorder(name, source)
+            except Exception:
+                pass
 
         def send(self, data, status=200, mime="application/json; charset=utf-8", filename=None, headers=None):
             is_json = mime.split(";")[0] == "application/json" or mime.split(";")[0].endswith("+json")
@@ -722,13 +250,82 @@ def make_server(port, backend, bind="127.0.0.1", allowed_hosts=(), policy=None):
         def do_OPTIONS(self):
             if not self.allowed(): return
             path = urlsplit(self.path).path
-            methods = "POST" if path == "/mcp" else "GET, HEAD, POST" if path == "/api/scans" else "GET, HEAD"
+            methods = "POST" if path in ("/mcp", "/api/waitlist", "/api/events") else "GET, HEAD, POST" if path == "/api/scans" else "GET, HEAD"
             self.send(b"", 204, "text/plain; charset=utf-8", headers={"Allow": methods})
 
         def do_POST(self):
             if not self.allowed(): return
+            path = urlsplit(self.path).path
+            if path == "/api/waitlist":
+                if self.headers.get("X-CSRF-Token") != token:
+                    self.send({"error": "Invalid waitlist token.", "code": "invalid_csrf_token"}, 403); return
+                signup = backend.get("waitlist")
+                if signup is None:
+                    self.send({"error": "The waitlist is not available right now.", "code": "waitlist_unavailable"}, 503); return
+                try:
+                    data = self.read_json(2048)
+                except RequestError as error:
+                    self.close_connection = True
+                    self.send({"error": error.message, "code": error.code}, error.status); return
+                if not isinstance(data, dict):
+                    self.send({"error": "Send a JSON object with an email address.", "code": "invalid_signup"}, 400); return
+                if honeypot_filled(data):
+                    # Automated submissions get the normal success shape and are
+                    # never stored; a human never fills the hidden field.
+                    self.send({"status": "created"}, 201); return
+                try:
+                    email, website, source = parse_signup(data)
+                except ValueError as error:
+                    # The parse failed, so there is no reliable source to attribute
+                    # this to; fall back to the landing CTA for the failure row.
+                    self._record_event("waitlist_signup_failed", "landing_page")
+                    self.send({"error": str(error), "code": "invalid_signup"}, 400); return
+                try:
+                    waitlist_limiter.admit(self.client_ip)
+                except RateLimitError as error:
+                    self._record_event("waitlist_signup_failed", source)
+                    self.send({"error": error.message, "code": "waitlist_rate_limited", "retry_after": error.retry_after}, 429,
+                              headers={"Retry-After": error.retry_after}); return
+                try:
+                    created = signup(email, website, source)
+                except Exception:
+                    self._record_event("waitlist_signup_failed", source)
+                    self.send({"error": "The waitlist is unavailable right now. Please try again shortly.", "code": "waitlist_unavailable"}, 503); return
+                if created:
+                    self._record_event("waitlist_signup_succeeded", source)
+                    self.send({"status": "created", "message": "You are on the list. We will be in touch when early access opens."}, 201)
+                else:
+                    # The submitter already controls this address, so confirming
+                    # it is already listed reveals nothing they did not know.
+                    self.send({"status": "already_registered", "message": "You are already on the waitlist. We will be in touch."}, 200)
+                return
+            if path == "/api/events":
+                if self.headers.get("X-CSRF-Token") != token:
+                    self.send({"error": "Invalid event token.", "code": "invalid_csrf_token"}, 403); return
+                recorder = backend.get("record_event")
+                if recorder is None:
+                    self.send({"error": "Analytics are not available right now.", "code": "analytics_unavailable"}, 503); return
+                try:
+                    data = self.read_json(512)
+                except RequestError as error:
+                    self.close_connection = True
+                    self.send({"error": error.message, "code": error.code}, error.status); return
+                try:
+                    event_limiter.admit(self.client_ip)
+                except RateLimitError as error:
+                    self.send({"error": error.message, "code": "event_rate_limited", "retry_after": error.retry_after}, 429,
+                              headers={"Retry-After": error.retry_after}); return
+                try:
+                    name, source = parse_event(data)
+                except ValueError as error:
+                    self.send({"error": str(error), "code": "invalid_event"}, 400); return
+                try:
+                    recorder(name, source)
+                except Exception:
+                    self.send({"error": "Analytics are unavailable right now.", "code": "analytics_unavailable"}, 503); return
+                self.send({"ok": True}); return
             if serve_agent_post(self, scoped_backend(self.client_ip), self.path, policy, create_scan): return
-            parts = urlsplit(self.path).path.strip("/").split("/")
+            parts = path.strip("/").split("/")
             if len(parts) == 4 and parts[:2] == ["api", "scans"] and parts[3] == "intelligence":
                 if self.headers.get("X-CSRF-Token") != token:
                     self.send({"error": "Invalid scan token."}, 403); return

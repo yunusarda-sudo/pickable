@@ -30,6 +30,10 @@ Probes domain readiness for AI agents via the Ora API, with Cloudflare's isitage
   - Runs Ora and Cloudflare in parallel with per-source fault isolation; the UI shows a partial report as soon as the first source lands.
 - **Non-Destructive Status Normalization**:
   - Preserves `UNKNOWN`, `NA`, and `WARNING` states without coercing them to `FAIL`.
+- **Early-access waitlist (`app/waitlist.py`)**:
+  - Accessible CTA under the scan form and inside scan reports opens a native dialog to capture an email (plus optional website and source).
+  - Server-side validation, email lowercasing and deduplication, a honeypot field that silently drops automated submissions, and per-peer/global rate limits. A repeat signup returns a friendly "already on the list" confirmation rather than an error.
+  - First-party funnel events (`/api/events`) are recorded without any third-party tracker; signup outcomes are counted server-side so a retry never double-counts.
 
 ---
 
@@ -178,6 +182,8 @@ PICKABLE_PUBLIC_URL=http://127.0.0.1:8765 python3 server.py --demo
 python3 scripts/verify_live.py --url http://127.0.0.1:8765
 ```
 
+Docker deployment disables product analysis by default (`INTELLIGENCE_PROVIDER=unavailable`) and does not pass OpenAI credentials into the container. Marketing and agent-readiness scans remain available. To use a local model later, explicitly configure `INTELLIGENCE_PROVIDER=ollama` and a reachable Ollama service.
+
 For Docker deployment on the configured host, `docker compose up -d --build`
 uses the existing Traefik network and domain routing. `render.yaml` serves the
 same application with `/api/health` as its health check. Set
@@ -192,3 +198,12 @@ python3 scripts/verify_live.py --url https://solveny.dev
 The verifier starts no scans and does not trigger Ora rescans. Observe the Ora
 score separately after deployment; a passing local suite does not establish a
 public score change.
+
+If sites on the same VPS time out only from the Pickable container, check whether
+the origin firewall permits only Cloudflare traffic. A verified fix is an
+interface-bound rule allowing only the container's source IP (`/32`) to the
+VPS's public IP on TCP 443. Do not allow the shared Docker subnet or unrestricted
+public ingress; keep SSRF protections enabled. Verify the container IP and bridge
+interface after rebuilding, and update that narrow rule if either changes.
+Required homepage fetch errors are preserved so transient marketing-analysis
+timeouts can retry, and saved reports show terminal intelligence results immediately.

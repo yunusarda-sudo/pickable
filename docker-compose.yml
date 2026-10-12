@@ -14,11 +14,7 @@ services:
       - PICKABLE_GLOBAL_SCANS_PER_HOUR=${PICKABLE_GLOBAL_SCANS_PER_HOUR:-30}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:8b}
-      - INTELLIGENCE_PROVIDER=${INTELLIGENCE_PROVIDER:-}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - OPENAI_MODEL=${OPENAI_MODEL:-}
-      - OPENAI_QUICK_MODEL=${OPENAI_QUICK_MODEL:-gpt-6-luna}
-      - OPENAI_DEEP_MODEL=${OPENAI_DEEP_MODEL:-gpt-6.1-sol}
+      - INTELLIGENCE_PROVIDER=${INTELLIGENCE_PROVIDER:-unavailable}
       # Trust Traefik/docker (default private ranges) so per-client rate limits
       # and IP-scoped reads use CF-Connecting-IP / X-Forwarded-For.
       - TRUSTED_PROXIES=${TRUSTED_PROXIES:-}

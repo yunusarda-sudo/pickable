@@ -38,3 +38,10 @@ An unauthorized enabled scan-start call returns HTTP 401. After authorization, s
 ## Local product intelligence
 
 The local intelligence feature remains available: GET /api/scans/{job_id}/intelligence and GET /api/scans/{job_id}/intelligence/deep return scoped analysis. POST /api/scans/{job_id}/intelligence starts deep research and requires X-CSRF-Token; bearer credentials cannot replace that token. Intelligence is not an MCP tool or evidence of hosted availability.
+
+## Waitlist
+
+Two endpoints capture early access and first-party funnel analytics. Both require Content-Type: application/json and X-CSRF-Token from GET /api/config; a bearer key does not replace the token, and both are limited to 2,048 and 512 bytes respectively.
+
+- POST /api/waitlist records a signup. Send {"email":"you@company.com"} with optional website and source (landing_page or scan_results). The email is lowercased and deduplicated; a repeat submission returns 200 with status already_registered rather than an error. A hidden honeypot field named company, when non-empty, is discarded and answered with a normal 201 so automated submissions are silently dropped. Rate limited per peer and globally; 429 includes Retry-After. Backend unavailability returns 503.
+- POST /api/events records a single client-side funnel event. Send {"name":"waitlist_cta_viewed","source":"landing_page"}. Accepted names are waitlist_cta_viewed, waitlist_cta_clicked, and waitlist_modal_opened. The authoritative signup outcomes (waitlist_signup_succeeded / waitlist_signup_failed) are recorded server-side and are not accepted here, so a client retry cannot double-count a signup. Rate limited per peer and globally; 429 includes Retry-After.

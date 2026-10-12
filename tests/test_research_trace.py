@@ -37,6 +37,7 @@ def _fake_public_addresses(host, port):
 def _analyze(envelope, status=200):
     with patch.dict("os.environ", OPENAI_ENV, clear=True), \
             patch("http.client.HTTPSConnection") as connection, \
+            patch("app.research.public_addresses", side_effect=_fake_public_addresses), \
             patch("app.intelligence.public_addresses", side_effect=_fake_public_addresses):
         connection.return_value.getresponse.return_value = _response(envelope, status)
         result = IntelligenceProvider().analyze(EVIDENCE, "deep")

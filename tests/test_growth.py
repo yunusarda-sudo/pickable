@@ -1,4 +1,5 @@
 """Marketing playbook checker: parsing and thresholds, no network."""
+import asyncio
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
@@ -6,8 +7,9 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from app.adapters.growth import page_preview, activity, build_checks, feed_dates, find_blog, parse_links, sitemap_entries, social_profiles, fetch_page
+from app.adapters.growth import GrowthAdapter, page_preview, activity, build_checks, feed_dates, find_blog, parse_links, sitemap_entries, social_profiles, fetch_page
 from app.reporting import build_report
+from app.safe_fetch import SafeFetchError, SSRFBlocked, TimeoutError as SafeFetchTimeout
 
 NOW = datetime(2026, 10, 10, tzinfo=timezone.utc)
 HOME = "https://example.com/"
@@ -64,6 +66,64 @@ class GrowthParsingTests(unittest.TestCase):
         preview = page_preview(html, HOME)
         self.assertEqual((preview["title"], preview["description"], preview["image"]), ("Acme", "We sell things", "https://example.com/og.png"))
         self.assertIsNone(preview["icon"])  # plain-http icon is dropped
+
+
+class GrowthFetchFailureTests(unittest.TestCase):
+    def setUp(self):
+        self.env = patch.dict(os.environ, {"ALLOWED_HOSTS": "own.test",
+                              "PICKABLE_PUBLIC_URL": "https://own.test",
+                              "RENDER_EXTERNAL_HOSTNAME": ""}, clear=False)
+        self.env.start()
+        self.addCleanup(self.env.stop)
+
+    def test_optional_fetch_failures_remain_none(self):
+        for error in (SafeFetchTimeout("request timed out"), SafeFetchError("connection reset"),
+                      SSRFBlocked("private address")):
+            with self.subTest(error=type(error).__name__):
+                with patch("app.adapters.growth.safe_fetch", side_effect=error), \
+                     patch("app.adapters.growth.internal_fetch") as internal:
+                    self.assertIsNone(fetch_page(HOME, timeout=1))
+                    internal.assert_not_called()
+
+    def test_required_timeout_preserves_original_exception(self):
+        error = SafeFetchTimeout("homepage deadline exceeded")
+        with patch("app.adapters.growth.safe_fetch", side_effect=error) as public, \
+             patch("app.adapters.growth.internal_fetch") as internal:
+            with self.assertRaises(SafeFetchTimeout) as caught:
+                fetch_page(HOME, timeout=1, required=True)
+        self.assertIs(caught.exception, error)
+        public.assert_called_once()
+        internal.assert_not_called()
+
+    def test_required_own_host_failure_preserves_public_error_after_fallback(self):
+        for error in (SafeFetchTimeout("public timeout"), SafeFetchError("public connection reset")):
+            with self.subTest(error=type(error).__name__):
+                with patch("app.adapters.growth.safe_fetch", side_effect=error), \
+                     patch("app.adapters.growth.internal_fetch", return_value=None) as internal:
+                    with self.assertRaises(type(error)) as caught:
+                        fetch_page("https://own.test/", timeout=1, required=True)
+                self.assertIs(caught.exception, error)
+                internal.assert_called_once()
+
+    def test_required_foreign_ssrf_failure_does_not_retry_or_use_loopback(self):
+        error = SSRFBlocked("destination resolved to a private address")
+        with patch("app.adapters.growth.safe_fetch", side_effect=error) as public, \
+             patch("app.adapters.growth.internal_fetch") as internal:
+            with self.assertRaises(SSRFBlocked) as caught:
+                fetch_page(HOME, timeout=1, required=True)
+        self.assertIs(caught.exception, error)
+        public.assert_called_once()
+        internal.assert_not_called()
+
+    def test_scan_homepage_timeout_retains_timeout_status_and_cause(self):
+        error = SafeFetchTimeout("homepage deadline exceeded")
+        with patch("app.adapters.growth.safe_fetch", side_effect=error) as public:
+            result = asyncio.run(GrowthAdapter(timeout=1).scan("example.com", "job-timeout"))
+        self.assertEqual(result.status, "timeout")
+        self.assertEqual(result.error, str(error))
+        self.assertIsNone(result.raw_report)
+        self.assertEqual(result.checks, [])
+        public.assert_called_once()
 
 
 class OwnHostFallbackTests(unittest.TestCase):

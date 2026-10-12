@@ -20,6 +20,16 @@
 - The normalized intelligence report is retained in server-side storage; the provider response envelope and raw prompt are discarded, and no public raw-download endpoint is exposed.
 - Source ids: `ora`, `cloudflare`, `growth`. Source statuses:
   `pending|running|completed|partial|unavailable|failed|timeout|interrupted`.
+- `POST /api/waitlist`, JSON `{ "email": "...", "website?": "...", "source?": "landing_page"|"scan_results" }`, `X-CSRF-Token`
+  → HTTP 201 `{ "status": "created", "message": "..." }` on a new signup, HTTP 200
+  `{ "status": "already_registered", "message": "..." }` when the lowercased email is already
+  listed (a friendly no-op, not an error). A non-empty hidden honeypot field named `company`
+  is discarded and answered with a normal 201 so automated submissions are silently dropped.
+  Rate limited per peer and globally; 429 includes `Retry-After`. Backend unavailability returns 503.
+- `POST /api/events`, JSON `{ "name": "waitlist_cta_viewed"|"waitlist_cta_clicked"|"waitlist_modal_opened", "source": "landing_page"|"scan_results" }, `X-CSRF-Token`
+  → HTTP 200 `{ "ok": true }`. Client-side funnel events only; the server records the
+  authoritative `waitlist_signup_succeeded` / `waitlist_signup_failed` rows itself, so a
+  client retry cannot double-count a signup. Rate limited per peer and globally.
 - Host/Origin validation and the scan token are backend responsibilities. CORS stays closed.
 
 ## Building reports

@@ -7,6 +7,16 @@ from server import public_intelligence
 
 
 class IntelligenceContractTests(unittest.TestCase):
+    def test_required_homepage_keeps_transport_failure_for_diagnostics(self):
+        from app.intelligence import _fetch_page
+        from app.safe_fetch import TimeoutError
+        error = TimeoutError("Request timed out")
+        with patch("app.evidence.own_aware_fetch", side_effect=error) as fetch:
+            with self.assertRaises(TimeoutError) as raised:
+                _fetch_page("https://example.com/", "homepage")
+        self.assertIs(raised.exception, error)
+        self.assertTrue(fetch.call_args.kwargs["required"])
+
     def test_openai_quick_model_uses_legacy_model_as_compatible_fallback(self):
         from app.intelligence import IntelligenceProvider
 
@@ -135,7 +145,7 @@ class IntelligenceContractTests(unittest.TestCase):
         def fetch(url, ref, timeout=12):
             observed.append(ref)
             return homepage if ref == "homepage" else pricing
-        with patch("app.intelligence._fetch_page", side_effect=fetch):
+        with patch("app.evidence._fetch_page", side_effect=fetch):
             result = fetch_evidence("https://example.com/", on_homepage=lambda page: observed.append("published:" + page["ref"]))
         self.assertEqual(observed, ["homepage", "published:homepage", "page-1"])
         self.assertEqual([page["ref"] for page in result["pages"]], ["homepage", "page-1"])

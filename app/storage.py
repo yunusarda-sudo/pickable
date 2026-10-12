@@ -100,6 +100,29 @@ class Storage:
                     UNIQUE(scan_id, depth)
                 );
             """)
+            # Early-access waitlist. The email is stored normalized and unique
+            # at the database level; no listing endpoint exposes these rows.
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS waitlist (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT NOT NULL UNIQUE,
+                    website TEXT,
+                    source TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+            """)
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_waitlist_source ON waitlist(source);")
+            # First-party analytics funnel rows: allowlisted names and sources
+            # only, never free text, so the table cannot hold personal data.
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS analytics_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+            """)
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_analytics_name ON analytics_events(name, source);")
             columns = {row["name"] for row in self.conn.execute("PRAGMA table_info(jobs)")}
             if "target_url" not in columns:
                 self.conn.execute("ALTER TABLE jobs ADD COLUMN target_url TEXT")
@@ -120,6 +143,38 @@ class Storage:
             )
             self.conn.execute("UPDATE intelligence_jobs SET status='interrupted', finished_at=? WHERE status IN ('queued', 'running');",
                               (datetime.datetime.now(datetime.timezone.utc).isoformat(),))
+
+    def _prune_analytics(self, keep_days: int = 180) -> None:
+        """Bounded analytics retention: funnel rows are measurements, not records.
+
+        Runs once at startup; the rate-limited event path keeps growth slow
+        and old rows carry no value once the launch window has passed.
+        """
+        cutoff = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=keep_days)).isoformat()
+        with self.conn:
+            self.conn.execute("DELETE FROM analytics_events WHERE created_at < ?", (cutoff,))
+
+    def add_waitlist_signup(self, email: str, website: Optional[str] = None, source: str = "landing_page") -> bool:
+        """Insert one early-access signup; False when the email is already listed.
+
+        Callers pass the already validated, normalized email. Uniqueness is
+        enforced by the database, so concurrent duplicate submissions cannot
+        both win the race.
+        """
+        with self._lock, self.conn:
+            cursor = self.conn.execute(
+                "INSERT OR IGNORE INTO waitlist (email, website, source, created_at) VALUES (?, ?, ?, ?)",
+                (email, website, source, datetime.datetime.now(datetime.timezone.utc).isoformat()),
+            )
+        return cursor.rowcount == 1
+
+    def record_event(self, name: str, source: str = "landing_page") -> None:
+        """Store one allowlisted first-party analytics event."""
+        with self._lock, self.conn:
+            self.conn.execute(
+                "INSERT INTO analytics_events (name, source, created_at) VALUES (?, ?, ?)",
+                (name, source, datetime.datetime.now(datetime.timezone.utc).isoformat()),
+            )
 
     def create_intelligence_job(self, scan_id: str, depth: str, model: str):
         now, job_id = datetime.datetime.now(datetime.timezone.utc).isoformat(), str(uuid.uuid4())

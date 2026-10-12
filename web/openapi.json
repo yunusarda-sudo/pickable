@@ -29,6 +29,10 @@
     {
       "name": "MCP",
       "description": "JSON-RPC 2.0 over stateless Streamable HTTP."
+    },
+    {
+      "name": "Waitlist",
+      "description": "Early-access waitlist capture and first-party funnel analytics."
     }
   ],
   "paths": {
@@ -713,6 +717,271 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/waitlist": {
+      "post": {
+        "tags": [
+          "Waitlist"
+        ],
+        "operationId": "joinWaitlist",
+        "summary": "Join the early-access waitlist",
+        "description": "Records an early-access waitlist signup. Requires the CSRF token from GET /api/config. Send email plus optional website and source. The email is lowercased and deduplicated; a repeat submission returns 200 already_registered rather than an error. A hidden honeypot field named company, when non-empty, is discarded and answered with a normal 201 so automated submissions are silently dropped. Rate limited per peer and globally; 429 includes Retry-After. Maximum encoded body size is 2,048 bytes.",
+        "security": [
+          {
+            "CsrfToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "A UTF-8 JSON object with a required email property and optional website and source. Maximum encoded body size is 2,048 bytes.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WaitlistSignupInput"
+              },
+              "examples": {
+                "landing": {
+                  "value": {
+                    "email": "you@company.com",
+                    "source": "landing_page"
+                  }
+                },
+                "withWebsite": {
+                  "value": {
+                    "email": "you@company.com",
+                    "website": "https://yoursite.com",
+                    "source": "scan_results"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The email is already on the waitlist. Body status is already_registered with a friendly confirmation message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaitlistResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Signup recorded. Body status is created with a confirmation message. Honeypot submissions also return 201 but are never stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WaitlistResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/malformed length, invalid UTF-8/JSON, invalid email or website value, or invalid body shape.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Host or Origin is disallowed, or no valid CSRF token was supplied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          },
+          "408": {
+            "description": "The request body did not arrive before the read timeout.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds 2,048 bytes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type is not application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The per-peer or global waitlist rate limit is full. Respect Retry-After before retrying.",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The waitlist store is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/events": {
+      "post": {
+        "tags": [
+          "Waitlist"
+        ],
+        "operationId": "recordWaitlistEvent",
+        "summary": "Record a first-party waitlist funnel event",
+        "description": "Accepts a single client-side funnel event (waitlist_cta_viewed, waitlist_cta_clicked, or waitlist_modal_opened) tagged with its source surface. Authoritative signup outcome events (waitlist_signup_succeeded / waitlist_signup_failed) are recorded server-side and are not accepted here, so a client retry cannot double-count a signup. Requires the CSRF token from GET /api/config. Rate limited per peer and globally; 429 includes Retry-After. Maximum encoded body size is 512 bytes.",
+        "security": [
+          {
+            "CsrfToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "A UTF-8 JSON object with a required name and source. Maximum encoded body size is 512 bytes.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventInput"
+              },
+              "examples": {
+                "ctaViewed": {
+                  "value": {
+                    "name": "waitlist_cta_viewed",
+                    "source": "landing_page"
+                  }
+                },
+                "modalOpened": {
+                  "value": {
+                    "name": "waitlist_modal_opened",
+                    "source": "scan_results"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventAck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/malformed length, invalid UTF-8/JSON, an unrecognized event name or source, or invalid body shape.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Host or Origin is disallowed, or no valid CSRF token was supplied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          },
+          "408": {
+            "description": "The request body did not arrive before the read timeout.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds 512 bytes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type is not application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The per-peer or global event rate limit is full. Respect Retry-After before retrying.",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The analytics store is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpError"
+                }
+              }
+            }
           }
         }
       }
@@ -2113,6 +2382,101 @@
               "string",
               "null"
             ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "WaitlistSignupInput": {
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 254,
+            "description": "Contact email address for early access. Surrounding whitespace is trimmed and the value is lowercased before it is stored.",
+            "examples": [
+              "you@company.com"
+            ]
+          },
+          "website": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Optional website URL, normalized to an https:// origin before it is stored.",
+            "examples": [
+              "https://yoursite.com"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "landing_page",
+              "scan_results"
+            ],
+            "description": "Which CTA produced the signup. Defaults to landing_page when omitted or unrecognized."
+          }
+        },
+        "additionalProperties": false
+      },
+      "WaitlistResult": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "created",
+              "already_registered"
+            ],
+            "description": "created for a new entry; already_registered when the email is already on the list (a friendly no-op, not an error)."
+          },
+          "message": {
+            "type": "string",
+            "description": "User-facing confirmation copy."
+          }
+        },
+        "additionalProperties": false
+      },
+      "EventInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "source"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "waitlist_cta_viewed",
+              "waitlist_cta_clicked",
+              "waitlist_modal_opened"
+            ],
+            "description": "Client-side funnel event. The server records authoritative waitlist_signup_succeeded/failed rows itself, so those names are not accepted here."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "landing_page",
+              "scan_results"
+            ],
+            "description": "Which surface produced the event."
+          }
+        },
+        "additionalProperties": false
+      },
+      "EventAck": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "description": "Always true when the event was accepted."
           }
         },
         "additionalProperties": false

@@ -359,7 +359,7 @@ function setMode(mode) {
   try { localStorage.setItem("pickable-mode", state.mode); } catch {}
 }
 
-function renderReport(report, sources = []) {
+function renderReport(report, sources = [], intelligence = null) {
   state.report = report;
   $("empty-state").hidden = true; $("results").hidden = false;
   $("report-domain").textContent = report.domain;
@@ -381,9 +381,11 @@ function renderReport(report, sources = []) {
   // A report with an unfinished source is labeled incomplete, never silent.
   const incomplete = Array.isArray(sources) && sources.some((s) => s && s.status !== "completed");
   $("report-warning").hidden = !incomplete;
-  renderIntelligence(null);
-  if (state.jobId) pollIntelligence(state.jobId, state.intelligenceDepth);
   setView("report");
+  renderIntelligence(intelligence);
+  // Surface how often the report-view CTA is actually seen, once per report.
+  if (!waitlist.viewed.scan_results) { waitlist.viewed.scan_results = true; trackEvent("waitlist_cta_viewed", "scan_results"); }
+  if (state.jobId) pollIntelligence(state.jobId, state.intelligenceDepth);
 }
 
 function intelSkeleton() {
@@ -524,7 +526,7 @@ async function loadScan(id, generation) {
     // Success means required fields are really filled: a terminal job whose
     // score could not be measured is an explicit error, never a report.
     if (!terminal || !measurable) showError("");
-    else { renderReport(result.report, result.sources); notify(""); }
+    else { renderReport(result.report, result.sources, result.intelligence); notify(""); }
     refreshHistory();
   }
 }
@@ -592,6 +594,121 @@ $("cancel-analysis").addEventListener("click", returnToLanding);
 $("open-history").addEventListener("click", () => { refreshHistory(); $("history-dialog").showModal(); });
 $("close-history").addEventListener("click", () => $("history-dialog").close());
 for (const button of document.querySelectorAll("[data-mode-button]")) button.addEventListener("click", () => setMode(button.dataset.modeButton));
+
+/* Waitlist: early-access capture.
+   - Client sends only the click/open/view funnel events; the server owns the
+     authoritative signup_succeeded/failed rows so a retry never double-counts.
+   - Every handler is attached by id and guarded, so this block is inert in the
+     Node vm test harness (no showModal/fetch window) and never throws. */
+const waitlist = { source: "landing_page", lastTrigger: null, viewed: { landing_page: false, scan_results: false }, pending: false };
+function trackEvent(name, source) {
+  // Best-effort, never awaited: analytics must not gate a signup or a scan.
+  try {
+    if (typeof fetch !== "function" || !state.token) return;
+    fetch("/api/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": state.token },
+      body: JSON.stringify({ name, source }),
+    }).catch(() => {});
+  } catch { /* analytics are optional */ }
+}
+function waitlistSetStatus(message, tone) {
+  const status = $("waitlist-status");
+  if (!status) return;
+  status.textContent = message || "";
+  status.hidden = !message;
+  if (tone) status.dataset.tone = tone; else status.removeAttribute("data-tone");
+}
+function waitlistShowSuccess(message) {
+  const form = $("waitlist-form"), success = $("waitlist-success"), text = $("waitlist-success-message");
+  if (form) form.hidden = true;
+  if (success) success.hidden = false;
+  if (text && message) text.textContent = message;
+  if ($("waitlist-done")) $("waitlist-done").focus();
+}
+function waitlistShowForm() {
+  const form = $("waitlist-form"), success = $("waitlist-success");
+  if (form) form.hidden = false;
+  if (success) success.hidden = true;
+  waitlistSetStatus("");
+}
+function openWaitlist(source, trigger) {
+  const dialog = $("waitlist-dialog");
+  if (!dialog) return;
+  waitlist.source = source === "scan_results" ? "scan_results" : "landing_page";
+  waitlist.lastTrigger = trigger || null;
+  waitlistShowForm();
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  // Focus the email field for keyboard/AT users once the dialog is open.
+  if ($("waitlist-email")) $("waitlist-email").focus();
+  trackEvent("waitlist_modal_opened", waitlist.source);
+}
+function closeWaitlist() {
+  const dialog = $("waitlist-dialog");
+  if (!dialog) return;
+  if (typeof dialog.close === "function") dialog.close();
+  // Return focus to the control that opened the dialog (WCAG 2.4.3).
+  if (waitlist.lastTrigger && typeof waitlist.lastTrigger.focus === "function") waitlist.lastTrigger.focus();
+  waitlist.lastTrigger = null;
+}
+function waitlistValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
+}
+async function submitWaitlist(event) {
+  event.preventDefault();
+  if (waitlist.pending) return;
+  const emailInput = $("waitlist-email"), websiteInput = $("waitlist-website");
+  if (!emailInput) return;
+  const email = (emailInput.value || "").trim();
+  const website = (websiteInput && websiteInput.value ? websiteInput.value : "").trim();
+  if (!waitlistValidEmail(email)) {
+    waitlistSetStatus("Enter a valid email address so we can reach you.", "error");
+    emailInput.focus();
+    return;
+  }
+  const submit = $("waitlist-submit");
+  waitlist.pending = true;
+  if (submit) submit.disabled = true;
+  waitlistSetStatus("Joining…", "info");
+  const body = { email, source: waitlist.source };
+  if (website) body.website = website;
+  // The honeypot value is never sent; an empty company field is what a human produces.
+  try {
+    const data = await api("/api/waitlist", { method: "POST", body: JSON.stringify(body) });
+    if (data && data.status === "already_registered") {
+      waitlistSetStatus("", "");
+      waitlistShowSuccess(data.message || "You are already on the waitlist. We will be in touch.");
+    } else {
+      waitlistSetStatus("", "");
+      waitlistShowSuccess((data && data.message) || "You are on the list. We will be in touch when early access opens.");
+    }
+  } catch (error) {
+    // Keep whatever the visitor typed so a transient failure never costs the entry.
+    const message = (error && error.message) || "Something went wrong. Please try again shortly.";
+    waitlistSetStatus(message, "error");
+    if (emailInput) emailInput.focus();
+  } finally {
+    waitlist.pending = false;
+    if (submit) submit.disabled = false;
+  }
+}
+const waitlistOpenLanding = $("open-waitlist");
+if (waitlistOpenLanding) waitlistOpenLanding.addEventListener("click", () => openWaitlist("landing_page", waitlistOpenLanding));
+const waitlistOpenReport = $("open-waitlist-report");
+if (waitlistOpenReport) waitlistOpenReport.addEventListener("click", () => openWaitlist("scan_results", waitlistOpenReport));
+const waitlistClose = $("close-waitlist");
+if (waitlistClose) waitlistClose.addEventListener("click", closeWaitlist);
+const waitlistCancel = $("waitlist-cancel");
+if (waitlistCancel) waitlistCancel.addEventListener("click", closeWaitlist);
+const waitlistDone = $("waitlist-done");
+if (waitlistDone) waitlistDone.addEventListener("click", closeWaitlist);
+const waitlistForm = $("waitlist-form");
+if (waitlistForm) waitlistForm.addEventListener("submit", submitWaitlist);
+const waitlistDialog = $("waitlist-dialog");
+if (waitlistDialog && typeof waitlistDialog.addEventListener === "function") {
+  // Clicking the backdrop (outside the dialog box) closes it, matching native expectations.
+  waitlistDialog.addEventListener("click", (event) => { if (event.target === waitlistDialog) closeWaitlist(); });
+}
 
 /* Ambient discovery-field animation: restrained premium motion.
    - 10 drifting nodes on slow organic (Lissajous) paths + glow pulsation.
@@ -775,6 +892,9 @@ async function initialize() {
   try {
     state.config = await api("/api/config"); state.token = state.config.csrf_token;
     $("demo-badge").hidden = state.config.mode !== "demo";
+    // The landing CTA is in the initial viewport, so record the first view once
+    // we actually have a token to post the event with.
+    if (!waitlist.viewed.landing_page) { waitlist.viewed.landing_page = true; trackEvent("waitlist_cta_viewed", "landing_page"); }
   } catch (error) { notify(error.message); }
   await refreshHistory();
 }

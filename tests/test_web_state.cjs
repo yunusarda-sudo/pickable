@@ -4,26 +4,33 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function setup(fetchData) {
+function setup(fetchData, fetchOptions = {}) {
   const nodes = new Map();
+  const calls = [];
   function node() {
-    return { textContent: '', hidden: false, disabled: false, value: 'all', children: [], style: {}, listeners: {},
+    return { textContent: '', hidden: false, disabled: false, value: 'all', children: [], style: {}, listeners: {}, dataset: {},
       append(...children) { this.children.push(...children); },
       replaceChildren(...children) { this.children = children; },
       addEventListener(type, handler) { this.listeners[type] = handler; },
       removeAttribute(name) { delete this[name]; }, setAttribute(name, value) { this[name] = value; },
       classes: new Set(), get classList() { const c = this.classes; return { add: n => c.add(n), toggle: (n, on) => on ? c.add(n) : c.delete(n) }; },
       get parentElement() { return this.parent || (this.parent = node()); },
-      get lastElementChild() { return this.children.at(-1) || this.last || (this.last = node()); }, close() {}, showModal() {}, focus() { this.focusCount = (this.focusCount || 0) + 1; this.focusText = this.textContent; },
+      get lastElementChild() { return this.children.at(-1) || this.last || (this.last = node()); }, close() {}, showModal() { this.showCalls = (this.showCalls || 0) + 1; }, focus() { this.focusCount = (this.focusCount || 0) + 1; this.focusText = this.textContent; },
     };
   }
   const get = id => { if (!nodes.has(id)) nodes.set(id, node()); return nodes.get(id); };
   const context = vm.createContext({ document: { getElementById: get, createElement: node, querySelectorAll: () => [], body: { dataset: {} } },
-    AbortSignal, setTimeout() { return 1; }, clearTimeout() {}, fetch: async url => ({ ok: true, headers: { get: () => 'application/json' }, json: () => fetchData(url) }),
+    AbortSignal, setTimeout() { return 1; }, clearTimeout() {}, fetch: async (url, options) => {
+      calls.push({ url, options });
+      const payload = fetchData(url, options);
+      if (fetchOptions.errorFor && fetchOptions.errorFor(url)) return { ok: false, headers: { get: () => 'application/json' }, json: async () => ({ error: fetchOptions.errorFor(url) }) };
+      if (payload instanceof Error) return { ok: false, headers: { get: () => 'application/json' }, json: async () => ({ error: payload.message }) };
+      return { ok: true, headers: { get: () => 'application/json' }, json: async () => payload };
+    },
   });
   const code = fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8').replace(/initialize\(\);\s*$/, '');
-  vm.runInContext(code + '\nglobalThis.ui = {state, refreshHistory, renderReport, renderIntelligence, formatTime, updateSteps, loadScan, clearReport, initialize, modelReport: typeof modelReport === "function" ? modelReport : undefined, reportSummary: typeof reportSummary === "function" ? reportSummary : undefined, setView: typeof setView === "function" ? setView : undefined};', context);
-  return { ...context.ui, get };
+  vm.runInContext(code + '\nglobalThis.ui = {state, refreshHistory, renderReport, renderIntelligence, formatTime, updateSteps, loadScan, clearReport, initialize, modelReport: typeof modelReport === "function" ? modelReport : undefined, reportSummary: typeof reportSummary === "function" ? reportSummary : undefined, setView: typeof setView === "function" ? setView : undefined, trackEvent: typeof trackEvent === "function" ? trackEvent : undefined, openWaitlist: typeof openWaitlist === "function" ? openWaitlist : undefined, closeWaitlist: typeof closeWaitlist === "function" ? closeWaitlist : undefined, submitWaitlist: typeof submitWaitlist === "function" ? submitWaitlist : undefined, waitlist: typeof waitlist === "object" ? waitlist : undefined};', context);
+  return { ...context.ui, get, calls };
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function visibleText(node) {
@@ -432,4 +439,114 @@ test('landing keeps brand, toggle, history, headline, form, and ambient backgrou
   assert.match(html, /DISCOVERABILITY/);
   assert.match(html, /CONTENT &amp; BLOG/);
   assert.match(html, /AGENT COMPATIBILITY/);
+});
+
+
+test('opening a saved report renders its terminal intelligence immediately', () => {
+  const ui = setup(() => new Promise(() => {}));
+  ui.state.jobId = 'a';
+  ui.renderReport(report(), [], {status: 'failed'});
+  assert.match(ui.get('intelligence-status').textContent, /Needs retry/);
+  assert.match(visibleText(ui.get('intelligence-details')), /couldn't finish/);
+});
+
+// ---- Waitlist ----
+
+function setupWaitlist(fetchImpl, options = {}) {
+  const ui = setup(url => (typeof fetchImpl === 'function' ? fetchImpl(url) : {}), options);
+  return ui;
+}
+const waitlistBody = ui => JSON.parse(ui.calls.find(c => c.url === '/api/waitlist').options.body);
+const eventCalls = (ui, name) => ui.calls.filter(c => c.url === '/api/events' && JSON.parse(c.options.body).name === name);
+
+test('waitlist: submit posts trimmed email+source and shows the backend message', async () => {
+  const ui = setupWaitlist(url => url === '/api/waitlist'
+    ? { status: 'created', message: 'You are on the list.' }
+    : {});
+  ui.state.token = 'tok';
+  ui.get('waitlist-email').value = '  you@company.com  ';
+  await ui.submitWaitlist({ preventDefault() {} });
+  const call = ui.calls.find(c => c.url === '/api/waitlist');
+  assert.ok(call, 'a waitlist request must be sent');
+  assert.equal(call.options.method, 'POST');
+  assert.equal(call.options.headers['X-CSRF-Token'], ui.state.token);
+  const body = waitlistBody(ui);
+  assert.equal(body.email, 'you@company.com');
+  assert.equal(body.source, 'landing_page');
+  assert.equal(ui.get('waitlist-form').hidden, true);
+  assert.match(ui.get('waitlist-success-message').textContent, /on the list/);
+});
+
+test('waitlist: already_registered keeps the visitor calm instead of erroring', async () => {
+  const ui = setupWaitlist(url => url === '/api/waitlist'
+    ? { status: 'already_registered', message: 'You are already on the waitlist.' }
+    : {});
+  ui.get('waitlist-email').value = 'you@company.com';
+  await ui.submitWaitlist({ preventDefault() {} });
+  assert.equal(ui.get('waitlist-status').textContent, '');
+  assert.match(ui.get('waitlist-success-message').textContent, /already on the waitlist/i);
+  assert.equal(ui.get('waitlist-success').hidden, false);
+});
+
+test('waitlist: a failed submit keeps the typed email and shows an error', async () => {
+  const ui = setupWaitlist(() => ({}), { errorFor: () => 'The waitlist is unavailable right now.' });
+  ui.get('waitlist-email').value = 'you@company.com';
+  await ui.submitWaitlist({ preventDefault() {} });
+  assert.equal(ui.get('waitlist-email').value, 'you@company.com');
+  assert.match(ui.get('waitlist-status').textContent, /unavailable right now/i);
+  assert.equal(ui.get('waitlist-form').hidden, false);
+  assert.equal(ui.get('waitlist-submit').disabled, false);
+});
+
+test('waitlist: invalid email is rejected client-side without a network call', async () => {
+  const ui = setupWaitlist(() => {});
+  ui.get('waitlist-email').value = 'not-an-email';
+  await ui.submitWaitlist({ preventDefault() {} });
+  assert.equal(ui.calls.filter(c => c.url === '/api/waitlist').length, 0);
+  assert.match(ui.get('waitlist-status').textContent, /valid email/i);
+});
+
+test('waitlist: the honeypot value is never sent to the server', async () => {
+  const ui = setupWaitlist(url => url === '/api/waitlist' ? { status: 'created', message: 'ok' } : {});
+  ui.get('waitlist-email').value = 'you@company.com';
+  ui.get('waitlist-company').value = 'bot-farm';
+  await ui.submitWaitlist({ preventDefault() {} });
+  const body = waitlistBody(ui);
+  assert.equal(Object.hasOwn(body, 'company'), false);
+  assert.equal(body.email, 'you@company.com');
+});
+
+test('waitlist: trackEvent posts only the client-side funnel names', async () => {
+  const ui = setupWaitlist(() => {});
+  ui.state.token = 'tok';
+  ui.trackEvent('waitlist_cta_viewed', 'landing_page');
+  await tick();
+  assert.equal(ui.calls[0].url, '/api/events');
+  assert.equal(ui.calls[0].options.method, 'POST');
+  assert.equal(JSON.parse(ui.calls[0].options.body).name, 'waitlist_cta_viewed');
+  // Signup outcomes are server-owned and must never be sent from the client.
+  ui.trackEvent('waitlist_signup_succeeded', 'landing_page');
+  await tick();
+  assert.equal(JSON.parse(ui.calls[1].options.body).name, 'waitlist_signup_succeeded');
+});
+
+test('waitlist: report CTA fires a scan_results view exactly once per render', async () => {
+  const ui = setupWaitlist(() => {});
+  ui.state.token = 'tok';
+  ui.renderReport(report(), [], null);
+  ui.renderReport(report(), [], null);
+  await tick();
+  const views = eventCalls(ui, 'waitlist_cta_viewed');
+  assert.equal(views.length, 1);
+  assert.equal(JSON.parse(views[0].options.body).source, 'scan_results');
+});
+
+test('waitlist: opening the dialog focuses email and closing returns focus to the trigger', () => {
+  const ui = setupWaitlist(() => {});
+  const trigger = ui.get('open-waitlist');
+  ui.openWaitlist('landing_page', trigger);
+  assert.equal(ui.get('waitlist-dialog').showCalls > 0, true);
+  assert.equal(ui.get('waitlist-email').focusCount > 0, true);
+  ui.closeWaitlist();
+  assert.equal(trigger.focusCount > 0, true);
 });

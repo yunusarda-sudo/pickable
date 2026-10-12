@@ -5,12 +5,16 @@ SSRF-protected HTTP client (Standard Library only).
 from __future__ import annotations
 
 import http.client
-import ipaddress
 import socket
 import ssl
 import urllib.parse
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
+
+
+from app.ssrf import is_ip_safe as _core_ip_safe
+from app.ssrf import resolve_and_verify as _core_resolve
+from app.ssrf import validate_url as _core_validate
 
 
 class SafeFetchError(Exception):
@@ -44,60 +48,21 @@ class FetchResult:
 
 
 def is_ip_safe(ip_str: str) -> bool:
-    """
-    Validates if an IP address is a safe public IP.
-    Blocks:
-    - RFC 1918 (10/8, 172.16/12, 192.168/16)
-    - Loopback (127/8, ::1)
-    - Link-local (169.254/16, fe80::/10)
-    - Cloud metadata (169.254.169.254)
-    - IPv6 ULA (fc00::/7)
-    - Unspecified / broadcast / multicast / reserved
-    - IPv4 mapped IPv6 addresses pointing to private ranges
-    """
-    try:
-        ip = ipaddress.ip_address(ip_str)
-    except ValueError:
-        return False
-
-    # Check IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1)
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
-        ip = ip.ipv4_mapped
-
-    if not ip.is_global or ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
-        return False
-
-    # Explicit cloud metadata check
-    if str(ip) == "169.254.169.254":
-        return False
-
-    return True
+    """Public-IP check. Canonical logic lives in app.ssrf; kept here for compat."""
+    return _core_ip_safe(ip_str)
 
 
 def resolve_and_verify(hostname: str, port: int) -> List[str]:
     """
     Resolves hostname via socket.getaddrinfo once.
     Verifies that all resolved IPs are safe and public.
-    Returns list of verified IP strings.
+    Returns list of verified IP strings. Raises SSRFBlocked on any violation.
+    Canonical DNS policy lives in app.ssrf.
     """
     try:
-        addr_infos = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
-    except socket.gaierror as e:
-        raise SSRFBlocked(f"DNS resolution failed for {hostname}: {e}") from e
-
-    if not addr_infos:
-        raise SSRFBlocked(f"No IP addresses resolved for {hostname}")
-
-    verified_ips: List[str] = []
-    for info in addr_infos:
-        sockaddr = info[4]
-        ip_str = sockaddr[0]
-        if not is_ip_safe(ip_str):
-            raise SSRFBlocked(f"SSRF blocked: IP {ip_str} for {hostname} is private or restricted")
-        if ip_str not in verified_ips:
-            verified_ips.append(ip_str)
-
-    return verified_ips
+        return _core_resolve(hostname, port)
+    except ValueError as e:
+        raise SSRFBlocked(str(e)) from e
 
 
 def safe_fetch(
@@ -124,23 +89,12 @@ def safe_fetch(
     all_resolved_ips: List[str] = []
 
     for redirect_step in range(max_redirects + 1):
-        parsed = urllib.parse.urlsplit(current_url)
-
-        # 1. Scheme check
-        if parsed.scheme.lower() not in ("http", "https"):
-            raise SSRFBlocked(f"Disallowed scheme: '{parsed.scheme}'. Only http and https are permitted.")
+        try:
+            parsed, port = _core_validate(current_url)
+        except ValueError as e:
+            raise SSRFBlocked(str(e)) from e
 
         hostname = parsed.hostname
-        if not hostname:
-            raise SSRFBlocked(f"Invalid URL without hostname: {current_url}")
-        if parsed.username is not None or parsed.password is not None:
-            raise SSRFBlocked("URLs with embedded credentials are blocked.")
-
-        port = parsed.port
-        if port is None:
-            port = 443 if parsed.scheme.lower() == "https" else 80
-        if port != (443 if parsed.scheme.lower() == "https" else 80):
-            raise SSRFBlocked("Non-standard destination ports are blocked.")
 
         # 2 & 3. DNS resolution & IP safety check
         verified_ips = resolve_and_verify(hostname, port)

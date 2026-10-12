@@ -48,6 +48,10 @@
         <input id="domain" name="url" placeholder="https://yoursite.com" required maxlength="2000" autocomplete="url" spellcheck="false" autocapitalize="none">
         <button id="scan-button" type="submit" aria-label="Start scan"><span>Scan</span><span aria-hidden="true">↗</span></button>
       </form>
+      <div class="waitlist-cta">
+        <p class="waitlist-note">Deeper agent-readiness insights are coming.</p>
+        <button type="button" id="open-waitlist" class="waitlist-button">Get early access <span aria-hidden="true">↗</span></button>
+      </div>
     </section>
     <section id="loading-view" class="loading-view" aria-labelledby="loading-title" aria-busy="true" hidden>
       <div class="loading-grid">
@@ -124,11 +128,35 @@
           <div id="intelligence-sources" class="intelligence-sources"></div>
           <button id="deep-analysis" class="text-button" type="button">Research deeper ↗</button></div>
         </section>
+        <div id="scan-waitlist-cta" class="waitlist-inline">
+          <p>Want deeper insights into how AI agents interact with your SaaS?</p>
+          <button type="button" id="open-waitlist-report" class="waitlist-button">Get early access <span aria-hidden="true">↗</span></button>
+        </div>
       </section>
     </div>
     <div id="empty-state" hidden></div>
     <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
   </main>
   <dialog id="history-dialog" aria-labelledby="history-title"><div class="dialog-head"><h2 id="history-title">Recent scans</h2><div><button id="refresh-history" aria-label="Refresh history">↻</button><button id="close-history" aria-label="Close history">✕</button></div></div><div id="history" class="history"></div></dialog>
+  <dialog id="waitlist-dialog" class="waitlist-dialog" aria-labelledby="waitlist-title">
+    <div class="dialog-head"><h2 id="waitlist-title">Get early access to Pickable</h2><button type="button" id="close-waitlist" class="waitlist-close" aria-label="Close">✕</button></div>
+    <p class="waitlist-intro">Be among the first to explore deeper agent-readiness insights and compatibility testing.</p>
+    <form id="waitlist-form" class="waitlist-form" novalidate>
+      <label for="waitlist-email">Email address</label>
+      <input id="waitlist-email" name="email" type="email" required maxlength="254" autocomplete="email" spellcheck="false" autocapitalize="none" placeholder="you@company.com">
+      <label for="waitlist-website">Website URL <span class="waitlist-optional">(optional)</span></label>
+      <input id="waitlist-website" name="website" type="url" maxlength="500" autocomplete="url" spellcheck="false" autocapitalize="none" placeholder="https://yoursite.com">
+      <div class="waitlist-honeypot" aria-hidden="true"><label for="waitlist-company">Company</label><input id="waitlist-company" name="company" type="text" tabindex="-1" autocomplete="off"></div>
+      <p id="waitlist-status" class="waitlist-status" role="status" aria-live="polite" hidden></p>
+      <div class="waitlist-actions">
+        <button type="submit" id="waitlist-submit" class="waitlist-submit">Join waitlist</button>
+        <button type="button" id="waitlist-cancel" class="text-button">Not now</button>
+      </div>
+    </form>
+    <div id="waitlist-success" class="waitlist-success" hidden>
+      <p id="waitlist-success-message">You are on the list. We will be in touch when early access opens.</p>
+      <button type="button" id="waitlist-done" class="text-button">Close</button>
+    </div>
+  </dialog>
 </body>
 </html>

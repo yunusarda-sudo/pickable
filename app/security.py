@@ -1,13 +1,22 @@
-"""Public-only URL validation and IP-pinned HTTP. No proxy or second DNS lookup."""
+"""Public-only URL validation and IP-pinned HTTP. No proxy or second DNS lookup.
+
+SSRF policy (IP safety, URL vetting, DNS verification) is canonical in
+app.ssrf. This module keeps the historical ValueError-based public API;
+the actual HTTP round-trip delegates to app.safe_fetch so redirect,
+pinning and size-limit behaviour cannot diverge.
+"""
 import http.client
 import ipaddress
 import json
 import re
 import socket
 import ssl
-import time
 from dataclasses import dataclass
-from urllib.parse import urlsplit, urljoin, urlunsplit, parse_qsl
+from urllib.parse import urlsplit, urlunsplit, parse_qsl
+
+from app.ssrf import is_ip_safe as _ip_safe
+from app.ssrf import resolve_and_verify as _resolve
+from app.ssrf import validate_url as _canonical_validate
 
 
 def normalize_domain(value):
@@ -61,28 +70,23 @@ def normalize_site_url(value):
 
 
 def public_addresses(host, port):
-    if port not in (80, 443):
-        raise ValueError("Only standard HTTP/HTTPS ports are allowed.")
-    answers = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    addresses = list(dict.fromkeys(answer[4][0] for answer in answers))
-    if not addresses or any(not ipaddress.ip_address(ip).is_global for ip in addresses):
-        raise ValueError("Access to private, local or reserved IP addresses is blocked.")
-    return addresses
+    """Resolve once; require every answer to be public. Raises ValueError."""
+    return _resolve(host, port)
 
 
 def validate_url(url):
-    if not isinstance(url, str) or len(url) > 4096 or "\\" in url or any(ord(c) < 33 for c in url):
-        raise ValueError("Invalid target URL.")
-    p = urlsplit(url)
-    if p.scheme not in ("http", "https") or not p.hostname or p.username is not None or p.password is not None:
-        raise ValueError("Non-HTTP(S) URLs or URLs with credentials are blocked.")
-    port = p.port or (443 if p.scheme == "https" else 80)
-    if port != (443 if p.scheme == "https" else 80):
-        raise ValueError("Non-standard port blocked.")
-    return p, port
+    """Parse and vet an http(s) URL. Canonical logic lives in app.ssrf."""
+    return _canonical_validate(url)
 
 
 class PinnedConnection(http.client.HTTPConnection):
+    """Kept for backward compatibility; new code paths use app.safe_fetch.
+
+    Previously this pinned the TCP socket to a pre-resolved IP. The live
+    implementation now lives in app.safe_fetch (single redirect/size-limit
+    policy); this class is no longer used internally.
+    """
+
     def __init__(self, host, port, address, secure, timeout):
         super().__init__(host, port, timeout=timeout)
         self.address, self.secure = address, secure
@@ -107,52 +111,40 @@ class Response:
 
 
 def request(url, method="GET", headers=None, body=None, timeout=12, follow=True, max_bytes=2_000_000):
-    deadline = time.monotonic() + timeout
-    headers = {"User-Agent": "Pickable/0.1", "Accept-Encoding": "identity", **(headers or {})}
-    body = body.encode() if isinstance(body, str) else body
-    for _ in range(6):
-        p, port = validate_url(url)
-        host = p.hostname.encode("idna").decode("ascii")
-        ips = public_addresses(host, port)
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise TimeoutError("Request timed out.")
-        connection = PinnedConnection(host, port, ips[0], p.scheme == "https", remaining)
-        try:
-            connection.request(method, (p.path or "/") + ("?" + p.query if p.query else ""), body=body, headers=headers)
-            response = connection.getresponse()
-            response_headers = {k.lower(): v for k, v in response.getheaders()}
-            if follow and response.status in (301, 302, 303, 307, 308) and response_headers.get("location"):
-                target = urljoin(url, response_headers["location"])
-                new, _ = validate_url(target)
-                if p.scheme == "https" and new.scheme != "https":
-                    raise ValueError("Redirect from HTTPS to HTTP blocked.")
-                if (new.scheme, new.netloc) != (p.scheme, p.netloc):
-                    headers = {k: v for k, v in headers.items()
-                               if k.lower() not in ("authorization", "cookie", "proxy-authorization", "host")}
-                if response.status == 303 or (response.status in (301, 302) and method == "POST"):
-                    method, body = "GET", None
-                    headers = {k: v for k, v in headers.items() if k.lower() != "content-type"}
-                url = target
-                continue
-            data = bytearray()
-            while len(data) <= max_bytes:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise TimeoutError("Response timed out.")
-                # The response owns a buffered socket file, including Connection: close.
-                if connection.sock:
-                    connection.sock.settimeout(remaining)
-                chunk = response.read1(min(65536, max_bytes + 1 - len(data)))
-                if not chunk:
-                    break
-                data.extend(chunk)
-            if len(data) > max_bytes:
-                raise ValueError("Provider response size limit exceeded.")
-            return Response(url, response.status, response_headers, bytes(data))
-        finally:
-            connection.close()
-    raise ValueError("Redirect limit exceeded.")
+    """SSRF-pinned HTTP request. Delegates to app.safe_fetch (single policy).
+
+    Keeps the historical signature and ValueError/TimeoutError contract;
+    redirect, DNS-pinning and size-limit behaviour are defined once in
+    app.safe_fetch so the two clients cannot diverge.
+    """
+    from app.safe_fetch import (
+        SafeFetchError,
+        TimeoutError as FetchTimeout,
+        safe_fetch,
+    )
+
+    merged = {"User-Agent": "Pickable/0.1", "Accept-Encoding": "identity", **(headers or {})}
+    payload = body.encode() if isinstance(body, str) else body
+    try:
+        result = safe_fetch(
+            url,
+            method=method,
+            headers=merged,
+            body=payload,
+            timeout=timeout,
+            max_redirects=5 if follow else 0,
+            max_bytes=max_bytes,
+        )
+    except FetchTimeout as e:
+        raise TimeoutError(str(e)) from e
+    except SafeFetchError as e:
+        raise ValueError(str(e)) from e
+    return Response(
+        url=result.final_url or url,
+        status=result.status,
+        headers={k.lower(): v for k, v in result.headers.items()},
+        body=result.body,
+    )
 
 
 def request_json(url, **options):

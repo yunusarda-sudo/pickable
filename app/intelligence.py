@@ -1,183 +1,53 @@
-"""Evidence-first product analysis from public pages plus the site-intelligence skill."""
+"""Evidence-first product analysis (provider orchestration).
 
+Page evidence lives in app.evidence, web-source normalization in
+app.research, schema/validation in app.analysis. This module keeps the
+IntelligenceProvider plus backward-compatible re-exports so existing
+`from app.intelligence import ...` paths keep working.
+"""
 from __future__ import annotations
 
-import hashlib
-from html.parser import HTMLParser
 import http.client
 import json
 import os
-import re
 import ssl
 import time
-from datetime import datetime, timezone
-from pathlib import Path
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
-from app.safe_fetch import safe_fetch
 from app.adapters.growth import fetch_page as own_aware_fetch
-from app.security import public_addresses, validate_url
-
-SKILL_PATH = Path(__file__).resolve().parent / "skills" / "saas-site-intelligence.md"
-FETCH_HEADERS = {"User-Agent": "Pickable/0.1 SaaS intelligence", "Accept": "text/html,application/xhtml+xml"}
-ASSET_RE = re.compile(r"\.(css|js|mjs|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|zip|mp4|pdf)(/|$)", re.I)
-SKIP_PATH = ("login", "signin", "signup", "register", "cart", "checkout", "privacy", "terms", "cookie", "careers", "jobs")
-PRIORITY = (
-    (3, ("pricing", "price", "plans", "plan", "fiyat")),
-    (2, ("about", "hakkimizda", "product", "features", "docs", "documentation", "integrations", "entegrasyon", "how-it-works", "getting-started")),
-    (1, ("faq", "help", "support", "guide", "customers", "use-cases")),
+from app.analysis import (
+    ANALYSIS_SCHEMA,
+    SKILL_PATH,
+    load_skill_instructions,
+    quick_analysis,
+    validate_analysis,
 )
+from app.evidence import (
+    ASSET_RE,
+    FETCH_HEADERS,
+    PRIORITY,
+    SKIP_PATH,
+    _fetch_page,
+    discovered_fetch_urls,
+    evidence_pages,
+    extract_page_evidence,
+    fetch_evidence,
+    select_research_urls,
+)
+from app.research import extract_research_sources
+from app.security import public_addresses, validate_url  # re-exported for compat
 
-
-class _PageParser(HTMLParser):
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.title = []
-        self.description = ""
-        self.text = []
-        self.links = []
-        self.in_title = False
-        self.skip = 0
-
-    def handle_starttag(self, tag, attrs):
-        attrs = {k.lower(): v or "" for k, v in attrs}
-        if tag in ("script", "style", "noscript", "svg", "template"):
-            self.skip += 1
-        if tag == "title": self.in_title = True
-        if tag == "meta" and attrs.get("name", "").lower() in ("description", "og:description"):
-            self.description = attrs.get("content", "")[:500]
-        if tag == "a" and attrs.get("href"):
-            self.links.append(attrs["href"][:2000])
-
-    def handle_endtag(self, tag):
-        if tag in ("script", "style", "noscript", "svg", "template") and self.skip:
-            self.skip -= 1
-        if tag == "title": self.in_title = False
-
-    def handle_data(self, data):
-        text = " ".join(data.split())
-        if not text or self.skip: return
-        if self.in_title and sum(map(len, self.title)) < 300: self.title.append(text)
-        self.text.append(text)
-
-
-def extract_page_evidence(url, status, headers, body, ref="homepage"):
-    """Keep only bounded, visible page evidence; never pass raw HTML to the model."""
-    parser = _PageParser()
-    parser.feed(body.decode("utf-8", errors="replace"))
-    visible = " ".join(parser.text)
-    return {"ref": ref, "url": url, "http_status": int(status),
-            "retrieved_at": datetime.now(timezone.utc).isoformat(),
-            "content_type": next((v for k, v in headers.items() if k.lower() == "content-type"), "")[:120],
-            "title": " ".join(parser.title)[:300], "description": parser.description[:500],
-            "visible_text": visible[:12000], "sha256": hashlib.sha256(body).hexdigest(),
-            "hash_kind": "sha256-response-body", "links": parser.links[:200]}
-
-
-def _path_score(path):
-    lowered = (path or "/").lower()
-    if any(part in lowered for part in SKIP_PATH):
-        return 0
-    score = 0
-    for value, words in PRIORITY:
-        if any(word in lowered for word in words):
-            score = max(score, value)
-    return score
-
-
-def select_research_urls(base_url, hrefs, origin_host, limit=3):
-    """Pick discovered same-origin product pages; do not invent paths."""
-    seen = set()
-    ranked = []
-    for href in hrefs or []:
-        if not isinstance(href, str) or href.startswith(("#", "mailto:", "javascript:", "tel:")):
-            continue
-        joined = urljoin(base_url, href)
-        try:
-            parts, _ = validate_url(joined)
-        except ValueError:
-            continue
-        host = (parts.hostname or "").encode("idna").decode("ascii").lower()
-        if host != origin_host or ASSET_RE.search(parts.path or ""):
-            continue
-        clean = urlunsplit((parts.scheme.lower(), host, parts.path or "/", "", ""))
-        if clean in seen or urlsplit(clean).path.rstrip("/") == urlsplit(base_url).path.rstrip("/"):
-            continue
-        seen.add(clean)
-        ranked.append((_path_score(parts.path), clean))
-    ranked.sort(key=lambda row: (-row[0], row[1]))
-    return [url for score, url in ranked if score > 0][:limit]
-
-
-def load_skill_instructions():
-    return SKILL_PATH.read_text(encoding="utf-8")[:14000]
-
-
-ANALYSIS_SCHEMA = {
-    "type": "object", "additionalProperties": False,
-    "properties": {
-        "product_summary": {"type": "string"}, "target_customers": {"type": "string"},
-        "problem": {"type": "string"}, "value_proposition": {"type": "string"},
-        "competitive_landscape": {"type": "string"},
-        "workflows": {"type": "array", "items": {"type": "string"}},
-        "evidence_refs": {"type": "array", "items": {"type": "string"}},
-        "unknowns": {"type": "array", "items": {"type": "string"}},
-    }, "required": ["product_summary", "target_customers", "problem", "value_proposition", "competitive_landscape", "workflows", "evidence_refs", "unknowns"]
-}
-
-
-def validate_analysis(data, allowed_refs=None):
-    if not isinstance(data, dict) or set(data) != set(ANALYSIS_SCHEMA["required"]):
-        raise ValueError("Analysis fields do not match the required schema.")
-    if not isinstance(data, dict) or any(not isinstance(data.get(k), str) or not data[k].strip()
-        for k in ("product_summary", "target_customers", "problem", "value_proposition", "competitive_landscape")):
-        raise ValueError("Analysis is missing a required product claim.")
-    if any(len(data[k]) > 2000 for k in ("product_summary", "target_customers", "problem", "value_proposition", "competitive_landscape")):
-        raise ValueError("Analysis text exceeds the field length limit.")
-    for key in ("workflows", "evidence_refs", "unknowns"):
-        if not isinstance(data.get(key), list) or len(data[key]) > 12 or any(not isinstance(v, str) or len(v) > 500 for v in data[key]):
-            raise ValueError(f"Analysis field {key} is invalid.")
-    refs = data["evidence_refs"]
-    allowed = set(allowed_refs) if allowed_refs is not None else {"homepage"}
-    if not refs or any(ref not in allowed for ref in refs):
-        raise ValueError("Every product claim must cite fetched page evidence.")
-    return {key: data[key] for key in ANALYSIS_SCHEMA["required"]}
-
-
-def quick_analysis(evidence):
-    """Return a clearly provisional summary when model inference is not available yet."""
-    pages = evidence_pages(evidence)
-    homepage = next((page for page in pages if page.get("ref") == "homepage"), pages[0] if pages else {})
-    title = str(homepage.get("title") or "").strip()[:300]
-    description = str(homepage.get("description") or "").strip()[:500]
-    visible = str(homepage.get("visible_text") or "").strip()
-    if title or description:
-        summary = "Ön bulgu: " + (title or description)
-        if title and description and description.lower() not in title.lower():
-            summary += " — " + description
-    else:
-        summary = "Sayfada ürünü tanımlamak için yeterli başlık veya açıklama bulunamadı."
-    source = {"label": title or "Public homepage", "url": homepage.get("url"),
-              "retrieved_at": homepage.get("retrieved_at"), "sha256": homepage.get("sha256")}
-    unknown = ["Hedef müşteri sayfa kanıtından doğrulanmadı.",
-               "Çözülen problem sayfa kanıtından doğrulanmadı.",
-               "Ürün değeri sayfa kanıtından doğrulanmadı.",
-               "Rakip araştırması yapılmadı."]
-    if not visible and not description:
-        unknown.insert(0, "Sayfanın görünen içeriği yetersiz; ürün analizi yapılamadı.")
-    return {"analysis_stage": "preliminary", "product_summary": summary,
-            "target_customers": "Sayfa kanıtından doğrulanmadı.",
-            "problem": "Sayfa kanıtından doğrulanmadı.",
-            "value_proposition": "Sayfa kanıtından doğrulanmadı.",
-            "competitive_landscape": "Rakip araştırması yapılmadı; doğrulanmadı.",
-            "workflows": [], "evidence_refs": [homepage.get("ref") or "homepage"],
-            "unknowns": unknown, "sources": [source] if isinstance(source.get("url"), str) else []}
-
-
-def evidence_pages(evidence):
-    if isinstance(evidence, dict) and isinstance(evidence.get("pages"), list) and evidence["pages"]:
-        return [page for page in evidence["pages"] if isinstance(page, dict)]
-    return [evidence] if isinstance(evidence, dict) else []
+__all__ = [
+    "IntelligenceProvider",
+    "FETCH_PAGE_TOOL",
+    "ANALYSIS_SCHEMA", "SKILL_PATH",
+    "FETCH_HEADERS", "ASSET_RE", "SKIP_PATH", "PRIORITY",
+    "evidence_pages", "extract_page_evidence", "select_research_urls",
+    "discovered_fetch_urls", "fetch_evidence", "_fetch_page", "own_aware_fetch",
+    "load_skill_instructions", "validate_analysis", "quick_analysis",
+    "extract_research_sources",
+    "public_addresses", "validate_url",
+]
 
 
 FETCH_PAGE_TOOL = {
@@ -197,25 +67,6 @@ FETCH_PAGE_TOOL = {
 }
 
 
-def discovered_fetch_urls(pages):
-    origin, allowed, seen = None, [], set()
-    for page in pages:
-        url = page.get("url")
-        if not isinstance(url, str):
-            continue
-        try:
-            parts, _ = validate_url(url)
-        except ValueError:
-            continue
-        host = (parts.hostname or "").encode("idna").decode("ascii").lower()
-        origin = origin or host
-        for candidate in select_research_urls(url, page.get("links"), origin, limit=20):
-            if candidate not in seen:
-                seen.add(candidate)
-                allowed.append(candidate)
-    return origin, allowed
-
-
 def _tool_call(call):
     fn = call.get("function") if isinstance(call, dict) else None
     if not isinstance(fn, dict):
@@ -232,119 +83,6 @@ def _tool_call(call):
 def _append_unknown(result, note):
     if note not in result["unknowns"] and len(result["unknowns"]) < 12:
         result["unknowns"].append(note)
-
-
-def _source_label(label, url):
-    """Human-readable source label; derive from the URL when the provider omits titles.
-
-    Observed production shape for web_search_call.action.sources is
-    {"type": "url", "url": ...} with no title key, which used to collapse
-    every source to the useless label "Web source".
-    """
-    text = str(label or "").strip()
-    if text:
-        return text[:180]
-    try:
-        parts = urlsplit(url)
-    except ValueError:
-        return "Web source"
-    host = parts.hostname or ""
-    if not host:
-        return "Web source"
-    path = (parts.path or "").rstrip("/")
-    if len(path) > 1:
-        segs = [s for s in path.split("/") if s][:2]
-        if segs:
-            return f"{host} — /{'/'.join(segs)}"[:180]
-    return host[:180]
-
-
-def _safe_research_source(label, url, origin):
-    """Keep only fetchable public HTTPS sources; return a canonical row or None."""
-    if not isinstance(url, str) or not url.startswith("https://"):
-        return None
-    try:
-        parts, port = validate_url(url)
-        public_addresses(parts.hostname, port)
-    except (ValueError, OSError):
-        return None
-    return {"label": _source_label(label, url), "url": url, "origin": origin}
-
-
-def extract_research_sources(envelope):
-    """Normalize provider search evidence into canonical sources with loss telemetry.
-
-    Reads both inline `url_citation` annotations and `web_search_call` action
-    sources (which require `include: ["web_search_call.action.sources"]` on the
-    request). Returns (sources, trace); trace attributes every `web_sources: 0`
-    to its exact loss stage instead of leaving it to guesswork.
-    """
-    trace = {"search_calls": 0, "raw_results": 0, "parsed_sources": 0,
-             "report_citations": 0, "provider_errors": 0,
-             "fallback_reason": None, "latency_ms": None}
-    cited, searched = [], []
-    items = envelope.get("output", []) if isinstance(envelope, dict) else []
-    if not isinstance(items, list):
-        items = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        if item.get("type") == "web_search_call":
-            trace["search_calls"] += 1
-            action = item.get("action")
-            action = action if isinstance(action, dict) else {}
-            sources = action.get("sources", [])
-            if not isinstance(sources, list):
-                continue
-            for source in sources:
-                if not isinstance(source, dict):
-                    continue
-                trace["raw_results"] += 1
-                row = _safe_research_source(source.get("title"), source.get("url"), "search")
-                if row:
-                    searched.append(row)
-                    trace["parsed_sources"] += 1
-            continue
-        if item.get("type") != "message":
-            continue
-        content = item.get("content", [])
-        if not isinstance(content, list):
-            continue
-        for part in content:
-            if not isinstance(part, dict):
-                continue
-            annotations = part.get("annotations", [])
-            if not isinstance(annotations, list):
-                continue
-            for annotation in annotations:
-                if not isinstance(annotation, dict):
-                    continue
-                # Documented shape: {"type": "url_citation", "url": ..., "title": ...}.
-                # Also accept a nested {"url_citation": {...}} payload defensively.
-                nested = annotation.get("url_citation")
-                if isinstance(nested, dict):
-                    url, title = nested.get("url"), nested.get("title")
-                elif annotation.get("type") == "url_citation":
-                    url, title = annotation.get("url"), annotation.get("title")
-                else:
-                    continue
-                if not isinstance(url, str):
-                    continue
-                trace["raw_results"] += 1
-                row = _safe_research_source(title, url, "citation")
-                if row:
-                    cited.append(row)
-                    trace["parsed_sources"] += 1
-    merged = list({row["url"]: row for row in [*cited, *searched]}.values())[:12]
-    trace["report_citations"] = len(merged)
-    if not merged:
-        if trace["raw_results"] > 0:
-            trace["fallback_reason"] = "all_sources_filtered"
-        elif trace["search_calls"] == 0:
-            trace["fallback_reason"] = "no_search_calls"
-        else:
-            trace["fallback_reason"] = "no_annotations_no_sources"
-    return merged, trace
 
 
 def _pages_for_model(pages):
@@ -574,33 +312,3 @@ class IntelligenceProvider:
             return result
         finally:
             conn.close()
-
-
-def _fetch_page(url, ref, timeout=12):
-    # Own-host targets reuse the growth adapter's loopback fallback: hosts
-    # that cannot reach their own public URL would otherwise fail every
-    # self-scan here. Foreign URLs behave exactly as before.
-    # Modern SaaS homepages often exceed 1 MB of HTML; the cap must stay
-    # well above that (evidence parsing needs the full body) while still
-    # bounding worker memory. Anything larger fails explicitly, never silently.
-    response = own_aware_fetch(url, timeout, max_redirects=4, max_bytes=3_000_000)
-    if response is None:
-        raise RuntimeError(f"{ref} is unreachable.")
-    if response.status < 200 or response.status >= 400:
-        raise RuntimeError(f"{ref} returned HTTP {response.status}.")
-    return extract_page_evidence(response.final_url or url, response.status, response.headers, response.body, ref=ref)
-
-
-def fetch_evidence(domain, extra_pages=1, on_homepage=None):
-    url = domain if isinstance(domain, str) and domain.startswith(("https://", "http://")) else "https://" + domain + "/"
-    homepage = _fetch_page(url, "homepage")
-    if on_homepage is not None:
-        on_homepage(homepage)
-    origin = urlsplit(homepage["url"]).hostname or urlsplit(url).hostname
-    extras = []
-    for index, candidate in enumerate(select_research_urls(homepage["url"], homepage.get("links"), origin, extra_pages), 1):
-        try:
-            extras.append(_fetch_page(candidate, f"page-{index}", timeout=8))
-        except Exception:
-            continue
-    return {"pages": [homepage, *extras]}

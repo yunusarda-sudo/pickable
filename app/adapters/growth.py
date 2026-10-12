@@ -18,7 +18,7 @@ from urllib.parse import urljoin, urlsplit
 import xml.etree.ElementTree as ET
 
 from app.adapters.base import Adapter, AdapterResult, CheckRecord
-from app.safe_fetch import FetchResult, safe_fetch
+from app.safe_fetch import FetchResult, safe_fetch, TimeoutError as FetchTimeoutError
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; PickableBot/0.1)", "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
 SOCIAL_HOSTS = {
@@ -92,19 +92,26 @@ def internal_fetch(domain, path="/", query="", timeout=8):
                        resolved_ips=["127.0.0.1"], final_url=f"https://{domain}{target}")
 
 
-def fetch_page(url, timeout, max_redirects=5, max_bytes=10_000_000):
+def fetch_page(url, timeout, max_redirects=5, max_bytes=10_000_000, *, required=False):
     """Public fetch first; loopback fallback when scanning our own host."""
+    error = None
     try:
         res = safe_fetch(url, headers=HEADERS, timeout=timeout,
                          max_redirects=max_redirects, max_bytes=max_bytes)
-    except Exception:
-        res = None
+    except Exception as exc:
+        error, res = exc, None
     if res is not None and res.status == 200:
         return res
     parts = urlsplit(url)
     host = (parts.hostname or "").lower().removeprefix("www.")
     if host and host in _own_hosts():
-        return internal_fetch(parts.hostname, parts.path or "/", parts.query, timeout)
+        local = internal_fetch(parts.hostname, parts.path or "/", parts.query, timeout)
+        if local is not None:
+            return local
+    if required:
+        if error is not None:
+            raise error
+        raise RuntimeError(f"Homepage returned HTTP {res.status}." if res is not None else "Homepage is unreachable.")
     return None
 # Calibration knobs: what "recent" and "regular" mean for a marketing blog.
 RECENT_DAYS = 60
@@ -304,7 +311,7 @@ class GrowthAdapter(Adapter):
             return dict(zip(urls, pool.map(self.get, urls)))
 
     def run(self, domain):
-        home = self.get(f"https://{domain}/")
+        home = fetch_page(f"https://{domain}/", self.timeout, required=True)
         if not home:
             raise RuntimeError(f"Could not load https://{domain}/")
         base = home.final_url or f"https://{domain}/"
@@ -376,6 +383,8 @@ class GrowthAdapter(Adapter):
     async def scan(self, domain: str, job_id: str) -> AdapterResult:
         try:
             raw = await asyncio.get_running_loop().run_in_executor(None, self.run, domain)
+        except FetchTimeoutError as exc:
+            return AdapterResult(self.source_id, "timeout", None, [], str(exc))
         except Exception as exc:
             return AdapterResult(self.source_id, "failed", None, [], str(exc))
         raw_json = json.dumps(raw)

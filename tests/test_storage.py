@@ -175,6 +175,73 @@ class TestStorage(unittest.TestCase):
         self.assertEqual(len(set(ids)), 80)
         self.assertTrue(all(self.storage.get_job(job_id)["status"] == "completed" for job_id in ids))
 
+    def test_waitlist_and_events_tables_created(self):
+        """waitlist ve analytics_events tablolari ve indeksleri kurulmali"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = {row[0] for row in cursor.fetchall()}
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='index';")
+        indexes = {row[0] for row in cursor.fetchall()}
+        conn.close()
+
+        self.assertIn("waitlist", tables)
+        self.assertIn("analytics_events", tables)
+        self.assertIn("idx_waitlist_source", indexes)
+        self.assertIn("idx_analytics_name", indexes)
+
+    def test_waitlist_signup_dedupes_and_persists_normalized_email(self):
+        """Ayni e-posta tekrar kaydedilmemeli; kayit normalize edilmis halde tutulmali.
+
+        normalize_email() zaten kucuk harfe cevirir; storage katmani bu normalize
+        edilmis degeri oldugu gibi saklar ve UNIQUE index ile tekillestirir.
+        """
+        self.assertTrue(self.storage.add_waitlist_signup("a@example.com", "https://a.example", "landing_page"))
+        self.assertFalse(self.storage.add_waitlist_signup("a@example.com", None, "scan_results"))
+
+        rows = self.storage.conn.execute("SELECT email, website, source FROM waitlist").fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(tuple(rows[0]), ("a@example.com", "https://a.example", "landing_page"))
+
+    def test_waitlist_signup_persists_across_restart(self):
+        """Kayitlar baglanti yeniden acildiginda korunmali"""
+        self.storage.add_waitlist_signup("keep@example.com", None, "scan_results")
+        self.storage.close()
+
+        reopened = Storage(self.db_path)
+        try:
+            rows = reopened.conn.execute("SELECT email, source FROM waitlist").fetchall()
+            self.assertEqual([tuple(r) for r in rows], [("keep@example.com", "scan_results")])
+        finally:
+            reopened.close()
+
+    def test_record_event_persists_and_allows_duplicates(self):
+        """Aynı funnel olayi birden fazla kez kaydedilebilmeli"""
+        self.storage.record_event("waitlist_cta_viewed", "landing_page")
+        self.storage.record_event("waitlist_cta_viewed", "landing_page")
+        self.storage.record_event("waitlist_modal_opened", "scan_results")
+
+        rows = self.storage.conn.execute(
+            "SELECT name, source FROM analytics_events ORDER BY id"
+        ).fetchall()
+        self.assertEqual([tuple(r) for r in rows], [
+            ("waitlist_cta_viewed", "landing_page"),
+            ("waitlist_cta_viewed", "landing_page"),
+            ("waitlist_modal_opened", "scan_results"),
+        ])
+
+    def test_record_event_persists_across_restart(self):
+        """Analytics olaylari baglanti yeniden acildiginda korunmali"""
+        self.storage.record_event("waitlist_cta_clicked", "scan_results")
+        self.storage.close()
+
+        reopened = Storage(self.db_path)
+        try:
+            rows = reopened.conn.execute("SELECT name, source FROM analytics_events").fetchall()
+            self.assertEqual([tuple(r) for r in rows], [("waitlist_cta_clicked", "scan_results")])
+        finally:
+            reopened.close()
+
 
 if __name__ == "__main__":
     unittest.main()
