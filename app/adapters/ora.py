@@ -222,11 +222,11 @@ class OraAdapter(Adapter):
                         raw_report_str = poll_res.body.decode("utf-8", errors="replace")
                         try:
                             data = json.loads(raw_report_str)
-                            if isinstance(data, dict) and data.get("status") not in ("pending", "running"):
-                                break
                         except json.JSONDecodeError:
+                            data = None
+                        if not isinstance(data, dict) or data.get("status") not in ("pending", "running"):
                             break
-                if not data or data.get("status") in ("pending", "running"):
+                if isinstance(data, dict) and data.get("status") in ("pending", "running"):
                     raise TimeoutError("Ora scan polling timed out")
             else:
                 return AdapterResult(
