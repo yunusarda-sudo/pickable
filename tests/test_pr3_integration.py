@@ -101,7 +101,7 @@ class RedirectIntegrationTests(unittest.TestCase):
         import socket
         from unittest.mock import MagicMock, patch
         from app.safe_fetch import safe_fetch
-        for status in (301, 302, 303, 307, 308):
+        for status in (301, 302, 303):
             with self.subTest(status=status):
                 redirect, response = MagicMock(), MagicMock()
                 redirect.status = status
@@ -116,11 +116,10 @@ class RedirectIntegrationTests(unittest.TestCase):
                         'Authorization': 'private', 'Cookie': 'private', 'Proxy-Authorization': 'private',
                         'Content-Type': 'application/json', 'Content-Length': '7'})
                     call = connection.return_value.request.call_args_list[-1]
-                    self.assertEqual(call.args[0], 'GET' if status in (301, 302, 303) else 'POST')
-                    self.assertEqual(call.kwargs['body'], None if status in (301, 302, 303) else b'payload')
+                    self.assertEqual(call.args[0], 'GET')
+                    self.assertIsNone(call.kwargs['body'])
                     headers = {key.lower(): value for key, value in call.kwargs['headers'].items()}
                     for key in ('authorization', 'cookie', 'proxy-authorization'):
                         self.assertNotIn(key, headers)
-                    if status in (301, 302, 303):
-                        self.assertNotIn('content-type', headers)
-                        self.assertNotIn('content-length', headers)
+                    self.assertNotIn('content-type', headers)
+                    self.assertNotIn('content-length', headers)

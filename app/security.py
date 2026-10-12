@@ -127,12 +127,15 @@ def request(url, method="GET", headers=None, body=None, timeout=12, follow=True,
                 new, _ = validate_url(target)
                 if p.scheme == "https" and new.scheme != "https":
                     raise ValueError("Redirect from HTTPS to HTTP blocked.")
-                if (new.scheme, new.netloc) != (p.scheme, p.netloc):
-                    headers = {k: v for k, v in headers.items()
-                               if k.lower() not in ("authorization", "cookie", "proxy-authorization", "host")}
                 if response.status == 303 or (response.status in (301, 302) and method == "POST"):
                     method, body = "GET", None
-                    headers = {k: v for k, v in headers.items() if k.lower() != "content-type"}
+                    headers = {k: v for k, v in headers.items()
+                               if k.lower() not in ("content-type", "content-length", "transfer-encoding")}
+                if (new.scheme, new.netloc) != (p.scheme, p.netloc):
+                    if body is not None:
+                        raise ValueError("Request body cannot be forwarded to a different origin.")
+                    headers = {k: v for k, v in headers.items()
+                               if k.lower() in ("user-agent", "accept", "accept-encoding")}
                 url = target
                 continue
             data = bytearray()

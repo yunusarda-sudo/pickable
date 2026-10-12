@@ -202,16 +202,19 @@ def safe_fetch(
                     if parsed.scheme.lower() == "https" and next_parts.scheme.lower() != "https":
                         conn.close()
                         raise SSRFBlocked("HTTPS to HTTP redirects are blocked.")
+                    if resp.status == 303 or (resp.status in (301, 302) and method.upper() == "POST"):
+                        method, body = "GET", None
+                        headers = {key: value for key, value in (headers or {}).items()
+                                   if key.lower() not in ("content-type", "content-length", "transfer-encoding")}
                     if (next_parts.scheme, next_parts.netloc) != (parsed.scheme, parsed.netloc):
+                        if body is not None:
+                            conn.close()
+                            raise SSRFBlocked("Request body cannot be forwarded to a different origin.")
                         # Do not forward caller-defined credentials (for example X-API-Key)
                         # to a different authority. Host is rebuilt from the redirect target.
                         req_headers = {key: value for key, value in req_headers.items()
                                        if key.lower() in ("user-agent", "accept", "accept-encoding")}
                         headers = req_headers
-                    if resp.status == 303 or (resp.status in (301, 302) and method.upper() == "POST"):
-                        method, body = "GET", None
-                        headers = {key: value for key, value in (headers or {}).items()
-                                   if key.lower() not in ("content-type", "content-length", "transfer-encoding")}
                     current_url = next_url
                     conn.close()
                     continue
