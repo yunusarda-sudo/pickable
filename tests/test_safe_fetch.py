@@ -141,6 +141,79 @@ class TestSafeFetch(unittest.TestCase):
                 with self.assertRaises(SSRFBlocked):
                     safe_fetch("http://example.com/start")
 
+    def test_cross_origin_redirect_does_not_replay_request_body(self):
+        for status, method in ((307, "POST"), (308, "POST"), (301, "PUT"), (302, "PUT")):
+            with self.subTest(status=status, method=method):
+                redirect = unittest.mock.MagicMock()
+                redirect.status = status
+                redirect.getheader.side_effect = lambda name, default=None: (
+                    "http://other.example/collect" if name.lower() == "location" else default
+                )
+                with patch("socket.getaddrinfo", return_value=[
+                    (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 80))
+                ]), patch("http.client.HTTPConnection") as connection:
+                    connection.return_value.getresponse.return_value = redirect
+                    with self.assertRaises(SSRFBlocked):
+                        safe_fetch("http://example.com/start", method=method, body=b"private")
+                    self.assertEqual(connection.return_value.request.call_count, 1)
+
+    def test_security_request_blocks_cross_origin_body_replay(self):
+        from app.security import request
+
+        for status, method in ((307, "POST"), (308, "POST"), (301, "PUT"), (302, "PUT")):
+            with self.subTest(status=status, method=method):
+                redirect = unittest.mock.MagicMock()
+                redirect.status = status
+                redirect.getheaders.return_value = [("Location", "http://other.example/collect")]
+                with patch("app.security.public_addresses", return_value=["93.184.216.34"]), \
+                     patch("app.security.PinnedConnection") as connection:
+                    connection.return_value.getresponse.return_value = redirect
+                    with self.assertRaises(ValueError):
+                        request("http://example.com/start", method=method, body=b"private")
+                    self.assertEqual(connection.return_value.request.call_count, 1)
+
+    def test_same_origin_307_preserves_post_body(self):
+        redirect, final = unittest.mock.MagicMock(), unittest.mock.MagicMock()
+        redirect.status = 307
+        redirect.getheader.side_effect = lambda name, default=None: (
+            "/next" if name.lower() == "location" else default
+        )
+        final.status = 200
+        final.getheader.return_value = None
+        final.getheaders.return_value = []
+        final.read.side_effect = [b"OK", b""]
+        with patch("socket.getaddrinfo", return_value=[
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 80))
+        ]), patch("http.client.HTTPConnection") as connection:
+            connection.return_value.getresponse.side_effect = [redirect, final]
+            safe_fetch("http://example.com/start", method="POST", body=b"payload")
+            second = connection.return_value.request.call_args_list[1]
+            self.assertEqual(second.args[0], "POST")
+            self.assertEqual(second.kwargs["body"], b"payload")
+
+    def test_security_request_strips_custom_secrets_and_entity_headers(self):
+        from app.security import request
+
+        redirect, final = unittest.mock.MagicMock(), unittest.mock.MagicMock()
+        redirect.status = 302
+        redirect.getheaders.return_value = [("Location", "http://other.example/next")]
+        final.status = 200
+        final.getheaders.return_value = []
+        final.read1.side_effect = [b"OK", b""]
+        with patch("app.security.public_addresses", return_value=["93.184.216.34"]), \
+             patch("app.security.PinnedConnection") as connection:
+            connection.return_value.getresponse.side_effect = [redirect, final]
+            request("http://example.com/start", method="POST", body=b"payload", headers={
+                "X-API-Key": "secret", "Content-Type": "text/plain", "Content-Length": "7",
+                "Transfer-Encoding": "chunked",
+            })
+            second = connection.return_value.request.call_args_list[1]
+            self.assertEqual(second.args[0], "GET")
+            self.assertIsNone(second.kwargs["body"])
+            sent = {key.lower() for key in second.kwargs["headers"]}
+            for key in ("x-api-key", "content-type", "content-length", "transfer-encoding"):
+                self.assertNotIn(key, sent)
+
     def test_timeout_enforced(self):
         """3 saniyede yanit gelmezse timeout"""
         with patch("socket.getaddrinfo") as mock_dns:
