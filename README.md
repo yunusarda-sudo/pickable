@@ -207,3 +207,5 @@ public ingress; keep SSRF protections enabled. Verify the container IP and bridg
 interface after rebuilding, and update that narrow rule if either changes.
 Required homepage fetch errors are preserved so transient marketing-analysis
 timeouts can retry, and saved reports show terminal intelligence results immediately.
+
+<!-- badges: yolo-run -->
