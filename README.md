@@ -1,5 +1,7 @@
 # Pickable
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 Pickable analyzes public websites using Ora, Cloudflare and marketing checks.
 Its public demo is [solveny.dev](https://solveny.dev); the demo domain is not the
 product name. Reports preserve source evidence and uncertainty.
