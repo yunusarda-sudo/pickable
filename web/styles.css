@@ -277,3 +277,7 @@ body[data-mode="agent"] .mode-normal,body:not([data-mode="agent"]) .mode-agent{d
 .waitlist-inline .waitlist-button:hover{background:#10553d;color:#fff;border-color:#10553d}
 @media(max-width:760px){.waitlist-cta{margin-top:28px}.waitlist-button{width:100%;justify-content:center}.waitlist-dialog .dialog-head,.waitlist-intro,.waitlist-form,.waitlist-success{padding-left:20px;padding-right:20px}.waitlist-actions{flex-direction:column;align-items:stretch;gap:12px}.waitlist-actions .text-button{text-align:center}.waitlist-inline{flex-direction:column;align-items:stretch}}
 @media(prefers-reduced-motion:reduce){.waitlist-button,.waitlist-submit{transition:none}}
+/* While a modal dialog is open the page must not scroll behind it; without
+   this the dialog appears stuck on screen as the content moves under it. */
+body.dialog-open{overflow:hidden}
+dialog{overscroll-behavior:contain}

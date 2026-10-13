@@ -19,7 +19,7 @@ function setup(fetchData, fetchOptions = {}) {
     };
   }
   const get = id => { if (!nodes.has(id)) nodes.set(id, node()); return nodes.get(id); };
-  const context = vm.createContext({ document: { getElementById: get, createElement: node, querySelectorAll: () => [], body: { dataset: {} } },
+  const context = vm.createContext({ document: { getElementById: get, createElement: node, querySelectorAll: () => [], body: { dataset: {}, classes: new Set(), get classList() { const c = this.classes; return { add: n => c.add(n), remove: n => c.delete(n), toggle: (n, on) => on ? c.add(n) : c.delete(n), contains: n => c.has(n) }; } } },
     AbortSignal, setTimeout() { return 1; }, clearTimeout() {}, fetch: async (url, options) => {
       calls.push({ url, options });
       const payload = fetchData(url, options);
@@ -29,7 +29,7 @@ function setup(fetchData, fetchOptions = {}) {
     },
   });
   const code = fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8').replace(/initialize\(\);\s*$/, '');
-  vm.runInContext(code + '\nglobalThis.ui = {state, refreshHistory, renderReport, renderIntelligence, formatTime, updateSteps, loadScan, clearReport, initialize, modelReport: typeof modelReport === "function" ? modelReport : undefined, reportSummary: typeof reportSummary === "function" ? reportSummary : undefined, setView: typeof setView === "function" ? setView : undefined, trackEvent: typeof trackEvent === "function" ? trackEvent : undefined, openWaitlist: typeof openWaitlist === "function" ? openWaitlist : undefined, closeWaitlist: typeof closeWaitlist === "function" ? closeWaitlist : undefined, submitWaitlist: typeof submitWaitlist === "function" ? submitWaitlist : undefined, waitlist: typeof waitlist === "object" ? waitlist : undefined};', context);
+  vm.runInContext(code + '\nglobalThis.ui = {state, refreshHistory, renderReport, renderIntelligence, formatTime, updateSteps, loadScan, clearReport, initialize, modelReport: typeof modelReport === "function" ? modelReport : undefined, reportSummary: typeof reportSummary === "function" ? reportSummary : undefined, setView: typeof setView === "function" ? setView : undefined, trackEvent: typeof trackEvent === "function" ? trackEvent : undefined, openWaitlist: typeof openWaitlist === "function" ? openWaitlist : undefined, closeWaitlist: typeof closeWaitlist === "function" ? closeWaitlist : undefined, submitWaitlist: typeof submitWaitlist === "function" ? submitWaitlist : undefined, waitlist: typeof waitlist === "object" ? waitlist : undefined, bodyClasses: document.body.classes};', context);
   return { ...context.ui, get, calls };
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -549,4 +549,16 @@ test('waitlist: opening the dialog focuses email and closing returns focus to th
   assert.equal(ui.get('waitlist-email').focusCount > 0, true);
   ui.closeWaitlist();
   assert.equal(trigger.focusCount > 0, true);
+});
+
+test('waitlist: page scroll locked while dialog open, released on close and on Esc', () => {
+  const ui = setupWaitlist(() => {});
+  ui.openWaitlist('landing_page', ui.get('open-waitlist'));
+  assert.equal(ui.bodyClasses.has('dialog-open'), true, 'open locks body scroll');
+  ui.closeWaitlist();
+  assert.equal(ui.bodyClasses.has('dialog-open'), false, 'close button releases lock');
+  // Esc fires the dialog "close" event natively (closeWaitlist is not called).
+  ui.openWaitlist('landing_page', ui.get('open-waitlist'));
+  ui.get('waitlist-dialog').listeners.close();
+  assert.equal(ui.bodyClasses.has('dialog-open'), false, 'native close event releases lock');
 });

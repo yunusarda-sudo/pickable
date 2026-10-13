@@ -591,7 +591,7 @@ $("rerun-scan").addEventListener("click", retryScan);
 $("back-start").addEventListener("click", returnToLanding);
 $("deep-analysis").addEventListener("click", requestDeepAnalysis);
 $("cancel-analysis").addEventListener("click", returnToLanding);
-$("open-history").addEventListener("click", () => { refreshHistory(); $("history-dialog").showModal(); });
+$("open-history").addEventListener("click", () => { refreshHistory(); $("history-dialog").showModal(); setPageScrollLock(true); });
 $("close-history").addEventListener("click", () => $("history-dialog").close());
 for (const button of document.querySelectorAll("[data-mode-button]")) button.addEventListener("click", () => setMode(button.dataset.modeButton));
 
@@ -632,6 +632,12 @@ function waitlistShowForm() {
   if (success) success.hidden = true;
   waitlistSetStatus("");
 }
+function setPageScrollLock(locked) {
+  // Modal dialogs do not stop the page scrolling behind them (notably on
+  // trackpads/iOS), which leaves the dialog floating over moved content.
+  const body = document.body;
+  if (body && body.classList) body.classList.toggle("dialog-open", locked);
+}
 function openWaitlist(source, trigger) {
   const dialog = $("waitlist-dialog");
   if (!dialog) return;
@@ -639,6 +645,7 @@ function openWaitlist(source, trigger) {
   waitlist.lastTrigger = trigger || null;
   waitlistShowForm();
   if (typeof dialog.showModal === "function") dialog.showModal();
+  setPageScrollLock(true);
   // Focus the email field for keyboard/AT users once the dialog is open.
   if ($("waitlist-email")) $("waitlist-email").focus();
   trackEvent("waitlist_modal_opened", waitlist.source);
@@ -647,6 +654,7 @@ function closeWaitlist() {
   const dialog = $("waitlist-dialog");
   if (!dialog) return;
   if (typeof dialog.close === "function") dialog.close();
+  setPageScrollLock(false);
   // Return focus to the control that opened the dialog (WCAG 2.4.3).
   if (waitlist.lastTrigger && typeof waitlist.lastTrigger.focus === "function") waitlist.lastTrigger.focus();
   waitlist.lastTrigger = null;
@@ -708,6 +716,10 @@ const waitlistDialog = $("waitlist-dialog");
 if (waitlistDialog && typeof waitlistDialog.addEventListener === "function") {
   // Clicking the backdrop (outside the dialog box) closes it, matching native expectations.
   waitlistDialog.addEventListener("click", (event) => { if (event.target === waitlistDialog) closeWaitlist(); });
+}
+// Esc closes dialogs natively (without closeWaitlist); release the scroll lock too.
+for (const modal of [waitlistDialog, $("history-dialog")]) {
+  if (modal && typeof modal.addEventListener === "function") modal.addEventListener("close", () => setPageScrollLock(false));
 }
 
 /* Ambient discovery-field animation: restrained premium motion.
