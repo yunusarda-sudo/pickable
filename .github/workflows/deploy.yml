@@ -16,6 +16,12 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
+            set -euo pipefail
             cd ~/pickable
-            git pull origin main
+            # Deploy is idempotent: force the worktree to match origin/main.
+            # Plain `git pull` aborts when tracked files (e.g. docker-compose.yml)
+            # drifted locally, leaving the old image serving forever. `reset --hard`
+            # discards that drift; gitignored .env (secrets, provider keys) survives.
+            git fetch origin main
+            git reset --hard origin/main
             docker compose up -d --build
