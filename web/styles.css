@@ -247,7 +247,10 @@ body[data-mode="agent"] .mode-normal,body:not([data-mode="agent"]) .mode-agent{d
 .waitlist-button span:last-child{font-size:15px}
 .waitlist-button:hover{background:var(--acid);color:#1c2615}
 .waitlist-button:focus-visible{outline:2px solid var(--acid);outline-offset:3px}
-#waitlist-dialog{width:min(480px,92vw);padding:0;display:flex;flex-direction:column}
+/* Scoped to [open]: an author `display` here would otherwise beat the UA rule
+   `dialog:not([open]){display:none}` and leave the dialog visible in the
+   page flow all the time (it then scrolls with the content at the bottom). */
+#waitlist-dialog[open]{width:min(480px,92vw);padding:0;display:flex;flex-direction:column}
 .waitlist-dialog .dialog-head{padding:24px 26px 0;align-items:flex-start;gap:16px}
 .waitlist-dialog .dialog-head h2{font-size:22px;letter-spacing:-.6px;line-height:1.25;font-weight:600;margin:0}
 .waitlist-close{border:0;background:var(--paper);border-radius:6px;padding:9px;font-size:14px;cursor:pointer;flex-shrink:0;color:var(--ink)}

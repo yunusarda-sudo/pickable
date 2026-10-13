@@ -562,3 +562,12 @@ test('waitlist: page scroll locked while dialog open, released on close and on E
   ui.get('waitlist-dialog').listeners.close();
   assert.equal(ui.bodyClasses.has('dialog-open'), false, 'native close event releases lock');
 });
+
+test('waitlist: dialog CSS forces display only while open', () => {
+  // An author `display` on the closed dialog beats the UA
+  // `dialog:not([open]){display:none}` rule, leaving the card visible in the
+  // page flow (it then sits at the bottom of the page and scrolls into view).
+  const css = fs.readFileSync(path.join(__dirname, '../web/styles.css'), 'utf8');
+  assert.doesNotMatch(css, /#waitlist-dialog\s*{[^}]*display\s*:/, 'no unscoped display on #waitlist-dialog');
+  assert.match(css, /#waitlist-dialog\[open\]\s*{[^}]*display\s*:/, 'display scoped to the [open] state');
+});
