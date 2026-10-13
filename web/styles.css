@@ -251,6 +251,8 @@ body[data-mode="agent"] .mode-normal,body:not([data-mode="agent"]) .mode-agent{d
    `dialog:not([open]){display:none}` and leave the dialog visible in the
    page flow all the time (it then scrolls with the content at the bottom). */
 #waitlist-dialog[open]{width:min(480px,92vw);padding:0;display:flex;flex-direction:column}
+/* The focus ring belongs on interactive controls, not the dialog shell. */
+#waitlist-dialog:focus{outline:none}
 .waitlist-dialog .dialog-head{padding:24px 26px 0;align-items:flex-start;gap:16px}
 .waitlist-dialog .dialog-head h2{font-size:22px;letter-spacing:-.6px;line-height:1.25;font-weight:600;margin:0}
 .waitlist-close{border:0;background:var(--paper);border-radius:6px;padding:9px;font-size:14px;cursor:pointer;flex-shrink:0;color:var(--ink)}
@@ -273,7 +275,7 @@ body[data-mode="agent"] .mode-normal,body:not([data-mode="agent"]) .mode-agent{d
 .waitlist-actions .text-button{color:var(--muted);cursor:pointer}
 .waitlist-success{padding:22px 26px 26px;display:flex;flex-direction:column;gap:18px}
 .waitlist-success p{font-size:14px;line-height:1.7;color:var(--ink);margin:0}
-.waitlist-success .text-button{color:var(--green);align-self:flex-start;cursor:pointer;text-decoration:underline;text-underline-offset:4px}
+.waitlist-success .waitlist-submit{align-self:flex-start}
 .waitlist-inline{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;border:1px solid var(--line);border-radius:12px;background:#fff;padding:20px 22px;margin:26px 0 8px}
 .waitlist-inline p{font-size:13px;line-height:1.7;color:var(--muted);margin:0;max-width:520px}
 .waitlist-inline .waitlist-button{color:#10553d;border-color:#7bb596}
