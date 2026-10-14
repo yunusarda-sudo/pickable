@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import queue
 import secrets
 import sys
@@ -49,17 +50,38 @@ def demo_backend():
                 for job in reversed(list(jobs.values())) if owner_ip is None or job.get("owner_ip") == owner_ip]}
 
 
-def live_backend(policy=None):
+def _live_adapters():
     from app.adapters.cloudflare import CloudflareAdapter
     from app.adapters.growth import GrowthAdapter
     from app.adapters.ora import OraAdapter
+    adapters = [OraAdapter(), CloudflareAdapter(), GrowthAdapter()]
+    # Sprint A shadow-mode: read-only AgentReady probes run alongside the
+    # scored sources but never affect the score. Opt-in via env so default
+    # deployments are unchanged until Sprint B validates precision.
+    if os.environ.get("PICKABLE_AGENTREADY_SHADOW", "0") == "1":
+        try:
+            from app.adapters.agentready import AgentReadyAdapter
+            adapters.append(AgentReadyAdapter())
+        except Exception:
+            pass
+    return adapters
+
+
+def live_backend(policy=None):
     from app.agent_policy import AgentPolicy
     from app.config import Config
     from app.orchestrator import Orchestrator
     from app.storage import Storage
     policy = policy or AgentPolicy.from_env()
     storage = Storage(Config.DB_PATH)
-    orchestrator = Orchestrator(adapters=[OraAdapter(), CloudflareAdapter(), GrowthAdapter()], storage=storage)
+    try:
+        # One line so a wiped/moved database is visible in the service logs:
+        # a live restart that drops to 0 rows means the DB file did not survive.
+        waiting = storage.conn.execute("SELECT COUNT(*) AS n FROM waitlist").fetchone()["n"]
+        print(f"waitlist: {waiting} rows in {Config.DB_PATH}", flush=True)
+    except Exception:
+        pass
+    orchestrator = Orchestrator(adapters=_live_adapters(), storage=storage)
     pending = queue.Queue(maxsize=MAX_QUEUED)
     admission_lock = threading.Lock()
     intelligence_pending = queue.Queue(maxsize=MAX_QUEUED)

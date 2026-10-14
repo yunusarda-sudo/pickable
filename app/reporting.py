@@ -27,8 +27,21 @@ MARKETING_DEFINITIONS = [
     ("content.blog_recent", "Blog updated recently", "content", "blogRecent", "Latest dated post is recent (feed or sitemap dates)."),
     ("content.blog_cadence", "Posts regularly", "content", "blogCadence", "Enough posts in the last 90 days to show a steady cadence."),
 ]
-NORMALIZED = {"pass": "PASS", "fail": "FAIL", "warn": "WARNING", "warning": "WARNING", "na": "NOT_APPLICABLE", "skip": "NOT_APPLICABLE", "not_applicable": "NOT_APPLICABLE"}
+NORMALIZED = {"pass": "PASS", "fail": "FAIL", "warn": "WARNING", "warning": "WARNING", "na": "NOT_APPLICABLE", "skip": "NOT_APPLICABLE", "not_applicable": "NOT_APPLICABLE",
+             "unknown": "UNKNOWN", "neutral": "UNKNOWN", "pending": "UNKNOWN",
+             "error": "ERROR", "timeout": "ERROR", "failed": "ERROR", "unavailable": "ERROR"}
 NO_EVIDENCE = "No definitive PASS/FAIL evidence. Warnings, N/A and access errors are excluded from the score."
+# Shadow informational checks (Sprint A): never scored, never override DEFINITIONS.
+SHADOW_SOURCES = ("agentready",)
+AGENTREADY_CHECK_IDS = ("contentSignals", "oauthDiscovery", "oauthProtectedResource", "authMd", "webMcp", "dnsAid")
+AGENTREADY_SPEC_URLS = {
+    "contentSignals": "https://contentsignals.org/",
+    "oauthDiscovery": "https://www.rfc-editor.org/rfc/rfc8414",
+    "oauthProtectedResource": "https://www.rfc-editor.org/rfc/rfc9728",
+    "authMd": "https://workos.com/auth-md/docs",
+    "webMcp": "https://webmachinelearning.github.io/webmcp/",
+    "dnsAid": "https://datatracker.ietf.org/doc/draft-mozleywilliams-dnsop-dnsaid/",
+}
 # Pickable-authored fallback guidance for FAIL checks the provider gave no
 # recommendation for. Never attributed to a provider; items carry source "pickable".
 PICKABLE_GUIDANCE = {
@@ -95,7 +108,7 @@ def report_from_job(job, source_runs, pending=()):
     sources = {}
     for run in source_runs:
         source = run.get("source_id")
-        if source not in SOURCES + ("growth",):
+        if source not in SOURCES + ("growth",) + SHADOW_SOURCES:
             continue
         raw, error = run.get("raw_report"), run.get("error")
         if isinstance(raw, str):
@@ -242,7 +255,36 @@ def build_report(domain, sources, pending=()):
     return {"schema_version": "0.1", "mapping_version": "2026-10-11.1", "domain": domain, "scanned_at": now(),
             "sources": summaries, "checks": checks, "score": {**score_checks(checks), "final": not any(c["scoring_status"] == "PENDING" for c in checks)},
             "source_specific": specific, "recommendations": recommendations,
+            "agentready": build_agentready(sources.get("agentready")),
             "marketing": build_marketing(sources.get("growth"), "growth" in pending)}
+
+
+def build_agentready(envelope):
+    """Shadow informational section (Sprint A): parsed from the agentready
+    adapter's raw_report summary. Never scored; N/A is never FAIL."""
+    envelope = dict(envelope or {"status": "unavailable", "raw": None})
+    raw = envelope.get("raw") if isinstance(envelope.get("raw"), dict) else None
+    items = []
+    if isinstance(raw, dict):
+        found = raw.get("checks")
+        if isinstance(found, list):
+            for entry in found:
+                if not isinstance(entry, dict) or not isinstance(entry.get("id"), str):
+                    continue
+                cid = entry["id"]
+                if cid not in AGENTREADY_CHECK_IDS:
+                    continue
+                status = entry.get("status") if entry.get("status") in (
+                    "PASS", "FAIL", "NOT_APPLICABLE", "UNKNOWN", "ERROR") else "UNKNOWN"
+                items.append({"check_id": cid, "status": status,
+                              "spec_url": AGENTREADY_SPEC_URLS.get(cid),
+                              "applicability_note": "Shadow probe; see Sprint A evidence in source run."})
+    return {"mode": "shadow", "scored": False,
+            "status": text_value(envelope.get("status")) or "unavailable",
+            "error": text_value(envelope.get("error")),
+            "observed_at": text_value(envelope.get("observed_at")),
+            "checks": items,
+            "note": "Informational only. Not scored. N/A is not a failure; UNKNOWN/ERROR need retry, not absence claims."}
 
 
 def build_marketing(envelope, pending):

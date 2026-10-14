@@ -106,7 +106,7 @@ class ReportingTests(unittest.TestCase):
     def test_native_states_survive_normalization(self):
         expected = {"warning": "WARNING", "warn": "WARNING", "pending": "UNKNOWN",
                     "na": "NOT_APPLICABLE", "neutral": "UNKNOWN",
-                    "skip": "NOT_APPLICABLE", "error": "UNKNOWN"}
+                    "skip": "NOT_APPLICABLE", "error": "ERROR", "timeout": "ERROR", "failed": "ERROR"}
         for native, normalized in expected.items():
             with self.subTest(native=native):
                 report = build_report("example.com", sources(

@@ -51,9 +51,21 @@ def public_report(report):
     score = report.get("score")
     if isinstance(score, dict):
         score = {key: score.get(key) for key in ("total", "grade", "coverage", "breakdown", "final", "label")}
+    agentready = report.get("agentready")
+    if isinstance(agentready, dict):
+        safe_checks = []
+        for check in agentready.get("checks", []) if isinstance(agentready.get("checks"), list) else []:
+            if not isinstance(check, dict):
+                continue
+            safe_checks.append({key: check.get(key) for key in ("check_id", "status", "spec_url")})
+        agentready = {"mode": agentready.get("mode"), "scored": False,
+                      "status": agentready.get("status"), "checks": safe_checks}
+    else:
+        agentready = None
     return {"schema_version": report.get("schema_version"),
             "domain": report.get("domain"), "scanned_at": report.get("scanned_at"),
             "checks": checks, "score": score if isinstance(score, dict) else None, "recommendations": recommendations,
+            "agentready": agentready,
             "marketing": marketing}
 
 

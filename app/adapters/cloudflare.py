@@ -45,7 +45,8 @@ class CloudflareAdapter(Adapter):
         if not isinstance(observed_at, str):
             observed_at = datetime.now(timezone.utc).isoformat()
         statuses = {"pass": "PASS", "fail": "FAIL", "warning": "WARNING", "warn": "WARNING",
-                    "na": "NA", "skip": "NA", "not_applicable": "NA", "error": "ERROR"}
+                    "na": "NOT_APPLICABLE", "skip": "NOT_APPLICABLE", "not_applicable": "NOT_APPLICABLE",
+                    "error": "ERROR", "timeout": "ERROR", "failed": "ERROR"}
         checks = [CheckRecord(job_id, self.source_id, cid, None,
                               statuses.get(check["status"], "UNKNOWN"), json.dumps(check), observed_at)
                   for cid, check in rows]
