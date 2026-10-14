@@ -1,6 +1,12 @@
-# Pickable request protection and credentials
+# Pickable auth.md — request protection and credentials
 
-Pickable has no user accounts or OAuth authorization flow. Scan history, statuses, reports, previews, and intelligence reads are scoped to the caller’s direct peer IP address. Forwarded-IP headers are not trusted; clients behind a reverse proxy may share the same scope. This is not account authentication or a confidentiality guarantee. Provider evidence is redacted and raw-source endpoints return 404. Scan-creation bearer credentials do not bypass read scope.
+This auth.md is for AI agents calling Pickable's public demo. There is no self-service agent registration endpoint: browser clients use a CSRF token, and operator-authorized scan creation uses a pre-shared bearer key. No account signup, OAuth authorization flow, or token endpoint exists on this service.
+
+## Agent provisioning (scan creation)
+
+The provisioning endpoint for agents is POST /api/scans. To register a scan, send Content-Type: application/json with exactly one domain or url string (for example {"domain":"example.com"}). Two credential methods are supported: (1) browser CSRF token from GET /api/config, sent as X-CSRF-Token; (2) operator-issued bearer key, sent as Authorization: Bearer <key>, required for MCP scan creation when the operator enables it. The bearer key authorizes only scan creation and is revoked by replacing or removing PICKABLE_AGENT_API_KEY in the service environment. Never send credentials or secrets for read operations; reads are scoped to the caller's direct peer IP address.
+
+Scan history, statuses, reports, previews, and intelligence reads are scoped to the caller's direct peer IP address. Forwarded-IP headers are not trusted; clients behind a reverse proxy may share the same scope. This is not account authentication or a confidentiality guarantee. Provider evidence is redacted and raw-source endpoints return 404. Scan-creation bearer credentials do not bypass read scope. OAuth/OIDC discovery and OAuth protected-resource metadata are intentionally not published because this service offers no OAuth authorization server.
 
 ## Browser CSRF token
 

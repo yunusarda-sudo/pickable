@@ -384,6 +384,38 @@ def verify(base_url: str, timeout: float, scan_id: str | None = None):
             status, _, _ = evidence.request("GET", path, name=f"homepage link {path}")
             evidence.record(f"homepage link {path}", status is not None and 200 <= status < 400, method="GET", path=path, status=status)
 
+    # Content Signals, the auth.md heading, and WebMCP exposure markers.
+    # These are read-only document checks; they never start a scan.
+    robots_status, robots_body, _ = evidence.request("GET", "/robots.txt", name="robots.txt content signals")
+    if robots_status is not None and 200 <= robots_status < 300:
+        robots_text = robots_body.decode("utf-8", errors="replace")
+        signal = re.search(r"^Content-Signal:(.*)$", robots_text, re.MULTILINE | re.IGNORECASE)
+        signal_ok = bool(signal) and all(token in signal.group(1).lower() for token in ("ai-train", "search", "ai-input"))
+        evidence.record("robots.txt declares Content-Signal preferences", signal_ok, method="GET", path="/robots.txt",
+                        detail=None if signal_ok else "expected Content-Signal with ai-train, search, ai-input")
+
+    auth_status, auth_body, _ = route_values.get("/auth.md", (None, b"", {}))
+    if auth_status is None:
+        auth_status, auth_body, _ = evidence.request("GET", "/auth.md", name="auth.md heading")
+    if auth_status is not None and 200 <= auth_status < 300:
+        auth_text = auth_body.decode("utf-8", errors="replace")
+        heading = next((line for line in auth_text.splitlines() if line.startswith("#")), "")
+        heading_ok = "auth.md" in heading.lower()
+        evidence.record("auth.md heading names auth.md", heading_ok, method="GET", path="/auth.md",
+                        detail=None if heading_ok else "expected an H1 heading containing auth.md")
+
+    if home_status == 200:
+        home_text = home_body.decode("utf-8", errors="replace")
+        declarative_ok = all(token in home_text for token in ("toolname=", "tooldescription", "toolparamdescription"))
+        evidence.record("homepage exposes declarative WebMCP attributes", declarative_ok, method="GET", path="/",
+                        detail=None if declarative_ok else "expected toolname/tooldescription/toolparamdescription on the scan form")
+        js_status, js_body, _ = evidence.request("GET", "/app.js", name="WebMCP registration script")
+        if js_status is not None and 200 <= js_status < 300:
+            js_text = js_body.decode("utf-8", errors="replace")
+            registration_ok = all(token in js_text for token in ("registerTool", "modelContext", "AbortController", "pickable_start_scan"))
+            evidence.record("app.js registers WebMCP tools", registration_ok, method="GET", path="/app.js",
+                            detail=None if registration_ok else "expected registerTool with modelContext and an AbortSignal")
+
     # The API catalog should either be the OpenAPI document itself or advertise
     # its URL. Validate operation IDs, path params, and error response schemas.
     status, body, headers = get_route("/openapi.json", name="OpenAPI document")

@@ -682,7 +682,20 @@ async function submitWaitlist(event) {
   if (website) body.website = website;
   // The honeypot value is never sent; an empty company field is what a human produces.
   try {
+    // Deployments rotate the server token. Refresh at submission time so
+    // visitors with an older tab (or a failed initial load) can still join.
+    const config = await api("/api/config", { cache: "no-store" });
+    if (!config || typeof config.csrf_token !== "string" || !config.csrf_token.trim()) {
+      throw new Error("The waitlist is unavailable right now. Please try again shortly.");
+    }
+    state.config = config;
+    state.token = config.csrf_token;
+    const demoNote = $("waitlist-demo-note");
+    if (demoNote) demoNote.hidden = config.mode !== "demo";
     const data = await api("/api/waitlist", { method: "POST", body: JSON.stringify(body) });
+    if (!data || !["created", "already_registered"].includes(data.status)) {
+      throw new Error("We could not confirm your signup. Please try again shortly.");
+    }
     if (data && data.status === "already_registered") {
       waitlistSetStatus("", "");
       waitlistShowSuccess(data.message || "You are already on the waitlist. We will be in touch.");
@@ -897,13 +910,81 @@ for (const modal of [waitlistDialog, $("history-dialog")]) {
   } catch (e) { /* ambient animation is decorative; never break the scan flow */ }
 })();
 
+/* WebMCP: expose the site's real actions to browser-based AI agents.
+   - Feature-detect document.modelContext first, fall back to navigator.modelContext.
+   - registerTool() returns a Promise; rejections are swallowed so a missing
+     agent host never breaks the scan flow.
+   - An AbortController signal unregisters the tools on pagehide.
+   - execute callbacks call the same real REST endpoints as the UI. */
+function registerWebMcpTools() {
+  try {
+    if (typeof document === "undefined") return;
+    const context = document.modelContext || (typeof navigator !== "undefined" ? navigator.modelContext : null);
+    if (!context || typeof context.registerTool !== "function") return;
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const options = controller ? { signal: controller.signal } : undefined;
+    if (typeof window !== "undefined" && controller && typeof window.addEventListener === "function") {
+      window.addEventListener("pagehide", () => { try { controller.abort(); } catch {} }, { once: true });
+    }
+    const tools = [
+      {
+        name: "pickable_start_scan",
+        description: "Start a Pickable agent-readiness scan for one public website URL. Returns the created scan job id.",
+        inputSchema: {
+          type: "object",
+          properties: { url: { type: "string", description: "Public HTTP(S) root URL or exact page URL to scan." } },
+          required: ["url"],
+          additionalProperties: false,
+        },
+        execute: async ({ url }) => {
+          const config = await api("/api/config");
+          if (!config || typeof config.csrf_token !== "string") throw new Error("Scan service unavailable.");
+          state.config = config;
+          state.token = config.csrf_token;
+          return api("/api/scans", { method: "POST", body: JSON.stringify({ url }) });
+        },
+      },
+      {
+        name: "pickable_list_scans",
+        description: "List Pickable scan summaries visible to this browser session.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        execute: async () => api("/api/scans"),
+      },
+      {
+        name: "pickable_get_scan_report",
+        description: "Read status and the normalized report for one existing Pickable scan.",
+        inputSchema: {
+          type: "object",
+          properties: { job_id: { type: "string", description: "Scan job id returned by pickable_start_scan or pickable_list_scans." } },
+          required: ["job_id"],
+          additionalProperties: false,
+        },
+        execute: async ({ job_id }) => api(`/api/scans/${encodeURIComponent(job_id)}`),
+      },
+    ];
+    for (const tool of tools) {
+      try {
+        const registered = options === undefined
+          ? context.registerTool(tool)
+          : context.registerTool(tool, options);
+        if (registered && typeof registered.catch === "function") registered.catch(() => {});
+      } catch { /* one failed tool must not block the others */ }
+    }
+  } catch { /* WebMCP is progressive enhancement only */ }
+}
+
 async function initialize() {
+  registerWebMcpTools();
   let saved = null; try { saved = localStorage.getItem("pickable-mode"); } catch {}
   setMode(saved || "normal");
   setView("landing");
   try {
     state.config = await api("/api/config"); state.token = state.config.csrf_token;
     $("demo-badge").hidden = state.config.mode !== "demo";
+    // Demo mode keeps signups in memory only; say so inside the dialog so a
+    // successful demo signup is never mistaken for a persisted one.
+    const demoNote = $("waitlist-demo-note");
+    if (demoNote) demoNote.hidden = state.config.mode !== "demo";
     // The landing CTA is in the initial viewport, so record the first view once
     // we actually have a token to post the event with.
     if (!waitlist.viewed.landing_page) { waitlist.viewed.landing_page = true; trackEvent("waitlist_cta_viewed", "landing_page"); }

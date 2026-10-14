@@ -1,6 +1,11 @@
 import unittest
 import tempfile
 import os
+import json
+import threading
+import urllib.error
+import urllib.request
+from unittest.mock import patch
 
 from app.storage import Storage
 from app.waitlist import (
@@ -169,6 +174,63 @@ class TestStorageWaitlist(unittest.TestCase):
     def test_utc_now_is_iso_formatted(self):
         stamp = utc_now()
         self.assertIn("T", stamp)
+
+
+class TestLiveWaitlistAPI(unittest.TestCase):
+    def test_signup_survives_backend_restart_and_stale_tokens_cannot_write(self):
+        from app.config import Config
+        from server import live_backend, make_server
+
+        def request(base, path, body=None, token=None):
+            headers = {"Content-Type": "application/json"}
+            if token:
+                headers["X-CSRF-Token"] = token
+            req = urllib.request.Request(
+                base + path, headers=headers,
+                data=json.dumps(body).encode() if body is not None else None,
+            )
+            try:
+                response = urllib.request.urlopen(req, timeout=3)
+            except urllib.error.HTTPError as error:
+                response = error
+            with response:
+                return response.status, json.load(response)
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(Config, "DB_PATH", os.path.join(tmp, "scan.db")):
+            old_token = None
+            for restart in range(2):
+                backend = live_backend()
+                server = make_server(0, backend)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                base = f"http://127.0.0.1:{server.server_port}"
+                try:
+                    _, config = request(base, "/api/config")
+                    token = config["csrf_token"]
+                    if old_token:
+                        status, data = request(base, "/api/waitlist", {"email": "lost@example.com"}, old_token)
+                        self.assertEqual(status, 403)
+                        self.assertEqual(data["code"], "invalid_csrf_token")
+                    status, data = request(base, "/api/waitlist", {
+                        "email": " Real@Example.COM ", "website": "example.com", "source": "scan_results",
+                    }, token)
+                    self.assertEqual(status, 201 if restart == 0 else 200)
+                    self.assertEqual(data["status"], "created" if restart == 0 else "already_registered")
+                    old_token = token
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join()
+                    backend["shutdown"]()
+            storage = Storage(Config.DB_PATH)
+            try:
+                rows = storage.conn.execute("SELECT email, website, source FROM waitlist").fetchall()
+                self.assertEqual([tuple(row) for row in rows], [("real@example.com", "https://example.com", "scan_results")])
+                self.assertEqual(storage.conn.execute(
+                    "SELECT COUNT(*) FROM analytics_events WHERE name='waitlist_signup_succeeded'"
+                ).fetchone()[0], 1)
+            finally:
+                storage.close()
 
 
 if __name__ == "__main__":

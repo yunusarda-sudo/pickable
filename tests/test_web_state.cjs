@@ -453,11 +453,110 @@ test('opening a saved report renders its terminal intelligence immediately', () 
 // ---- Waitlist ----
 
 function setupWaitlist(fetchImpl, options = {}) {
-  const ui = setup(url => (typeof fetchImpl === 'function' ? fetchImpl(url) : {}), options);
+  const ui = setup(url => {
+    const payload = typeof fetchImpl === 'function' ? fetchImpl(url) : {};
+    return url === '/api/config' && payload && Object.keys(payload).length === 0
+      ? { csrf_token: 'fresh-token', mode: 'live' }
+      : payload;
+  }, options);
   return ui;
 }
 const waitlistBody = ui => JSON.parse(ui.calls.find(c => c.url === '/api/waitlist').options.body);
 const eventCalls = (ui, name) => ui.calls.filter(c => c.url === '/api/events' && JSON.parse(c.options.body).name === name);
+
+test('waitlist: an existing tab can join after the server token rotates, including another deployment', async () => {
+  let serverToken = 'deployment-two';
+  const ui = setup((url, options) => {
+    if (url === '/api/config') return { csrf_token: serverToken, mode: 'live' };
+    if (url === '/api/waitlist') return options.headers['X-CSRF-Token'] === serverToken
+      ? { status: 'created', message: 'You are on the list.' }
+      : new Error('Invalid CSRF token');
+    return {};
+  });
+  ui.state.token = 'deployment-one';
+  ui.get('waitlist-email').value = 'first@example.test';
+
+  await ui.submitWaitlist({ preventDefault() {} });
+
+  assert.equal(ui.get('waitlist-form').hidden, true);
+  assert.equal(ui.get('waitlist-status').textContent, '');
+  ui.openWaitlist('landing_page');
+  serverToken = 'deployment-three';
+  ui.get('waitlist-email').value = 'second@example.test';
+
+  await ui.submitWaitlist({ preventDefault() {} });
+
+  assert.equal(ui.get('waitlist-form').hidden, true);
+  assert.equal(ui.get('waitlist-status').textContent, '');
+  assert.deepEqual(ui.calls.filter(c => c.url === '/api/waitlist').map(c => c.options.headers['X-CSRF-Token']),
+    ['deployment-two', 'deployment-three']);
+});
+
+test('waitlist: signup recovers when initial page config never loaded', async () => {
+  const ui = setup((url, options) => {
+    if (url === '/api/config') return { csrf_token: 'recovered-token', mode: 'live' };
+    if (url === '/api/waitlist') return options.headers['X-CSRF-Token'] === 'recovered-token'
+      ? { status: 'created', message: 'Saved successfully.' }
+      : new Error('Invalid CSRF token');
+    return {};
+  });
+  ui.get('waitlist-email').value = 'visitor@example.test';
+
+  await ui.submitWaitlist({ preventDefault() {} });
+
+  assert.equal(ui.get('waitlist-form').hidden, true);
+  assert.equal(ui.get('waitlist-success-message').textContent, 'Saved successfully.');
+});
+
+test('waitlist: a failed config refresh preserves input and allows retry without submitting', async () => {
+  const ui = setup(url => url === '/api/config'
+    ? new Error('Configuration unavailable. Please try again.')
+    : { status: 'created' });
+  ui.state.token = 'stale-token';
+  ui.get('waitlist-email').value = 'visitor@example.test';
+  ui.get('waitlist-website').value = 'https://example.test';
+  ui.get('waitlist-success').hidden = true;
+
+  await ui.submitWaitlist({ preventDefault() {} });
+
+  assert.equal(ui.calls.filter(c => c.url === '/api/waitlist').length, 0);
+  assert.match(ui.get('waitlist-status').textContent, /unavailable/i);
+  assert.equal(ui.get('waitlist-email').value, 'visitor@example.test');
+  assert.equal(ui.get('waitlist-website').value, 'https://example.test');
+  assert.equal(ui.get('waitlist-form').hidden, false);
+  assert.equal(ui.get('waitlist-success').hidden, true);
+  assert.equal(ui.get('waitlist-submit').disabled, false);
+  assert.equal(ui.waitlist.pending, false);
+});
+
+test('waitlist: config without a token cannot submit using the stale token', async () => {
+  const ui = setup(url => url === '/api/config' ? {} : { status: 'created' });
+  ui.state.token = 'stale-token';
+  ui.get('waitlist-email').value = 'visitor@example.test';
+
+  await ui.submitWaitlist({ preventDefault() {} });
+
+  assert.equal(ui.calls.filter(c => c.url === '/api/waitlist').length, 0);
+  assert.equal(ui.get('waitlist-form').hidden, false);
+  assert.ok(ui.get('waitlist-status').textContent);
+  assert.equal(ui.get('waitlist-submit').disabled, false);
+});
+
+for (const payload of [null, {}, { status: 'unexpected', message: 'Not saved.' }]) {
+  test(`waitlist: malformed success response ${JSON.stringify(payload)} keeps the signup form`, async () => {
+    const ui = setupWaitlist(url => url === '/api/waitlist' ? payload : {});
+    ui.get('waitlist-email').value = 'visitor@example.test';
+    ui.get('waitlist-success').hidden = true;
+
+    await ui.submitWaitlist({ preventDefault() {} });
+
+    assert.equal(ui.get('waitlist-form').hidden, false);
+    assert.equal(ui.get('waitlist-success').hidden, true);
+    assert.ok(ui.get('waitlist-status').textContent);
+    assert.equal(ui.get('waitlist-email').value, 'visitor@example.test');
+    assert.equal(ui.get('waitlist-submit').disabled, false);
+  });
+}
 
 test('waitlist: submit posts trimmed email+source and shows the backend message', async () => {
   const ui = setupWaitlist(url => url === '/api/waitlist'

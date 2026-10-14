@@ -29,11 +29,16 @@ Probes domain readiness for AI agents via the Ora API, with Cloudflare's isitage
   - Marketing playbook (`app/adapters/growth.py`): social profiles linked from the home page and blog presence, recency and cadence (RSS/Atom feed, falling back to sitemap dates). The UI has a Normal (marketing) / Agent (readiness) toggle.
   - Runs Ora and Cloudflare in parallel with per-source fault isolation; the UI shows a partial report as soon as the first source lands.
 - **Non-Destructive Status Normalization**:
-  - Preserves `UNKNOWN`, `NA`, and `WARNING` states without coercing them to `FAIL`.
+  - Preserves `WARNING`, `NOT_APPLICABLE`, `UNKNOWN`, and `ERROR` states without coercing them to `FAIL`. Timeouts and access blocks are never treated as absence proof.
+- **AgentReady shadow checks (`app/agentready.py`, opt-in)**:
+  - Six read-only probes (Content Signals, OAuth discovery, protected resources, auth.md, WebMCP markers, DNS-AID via DNS-over-HTTPS) run beside the scored sources but never feed the score. Applicability is decided before PASS/FAIL; N/A is never a failure and no fake endpoints are ever suggested.
 - **Early-access waitlist (`app/waitlist.py`)**:
   - Accessible CTA under the scan form and inside scan reports opens a native dialog to capture an email (plus optional website and source).
   - Server-side validation, email lowercasing and deduplication, a honeypot field that silently drops automated submissions, and per-peer/global rate limits. A repeat signup returns a friendly "already on the list" confirmation rather than an error.
   - First-party funnel events (`/api/events`) are recorded without any third-party tracker; signup outcomes are counted server-side so a retry never double-counts.
+  - Each signup refreshes its CSRF token from `/api/config`, allowing existing tabs to submit after a server restart. Confirmation requires a recognized server status (`created` or `already_registered`).
+  - Live signups persist in the SQLite database at `DB_PATH` (default `./data/scan.db`); `--demo` stores them in memory only. Keep the live database on a persistent volume; Docker Compose mounts `./data` at `/app/data`.
+  - Check counts on the actual serving host with `docker compose exec web python3 scripts/check_waitlist.py`. A local database does not show signups stored by the public VPS.
 
 ---
 
@@ -44,28 +49,46 @@ app/
   __init__.py
   config.py              # Environment variables and defaults
   safe_fetch.py          # SSRF-protected HTTP client with DNS pinning
+  ssrf.py                # Single source of truth for SSRF policy
   intelligence.py       # skill-guided page fetch and local Ollama / hosted analysis
   skills/saas-site-intelligence.md
   storage.py             # SQLite schema and operations
+  reporting.py           # Score-preserving report builder (PASS/FAIL/WARNING/NOT_APPLICABLE/UNKNOWN/ERROR)
+  presenters.py          # Redacted customer-facing projections
+  agentready.py          # Six AgentReady check validators + evidence records (see docs/AGENTREADY_UPSTREAM.md)
   adapters/
     __init__.py
     base.py              # Adapter ABC & CheckRecord dataclass
     ora.py               # Ora API adapter (with rate limiter & polling)
     cloudflare.py        # isitagentready.com fallback adapter
     growth.py            # marketing playbook: socials + blog checks
+    agentready.py        # Shadow-mode read-only probes (opt-in: PICKABLE_AGENTREADY_SHADOW=1, never scored)
   orchestrator.py        # Concurrent adapter orchestration & fault isolation
+scripts/
+  verify_live.py         # Read-only deployment verifier (no scans, no rescans)
+  eval_agentready.py     # Mocked 23-case eval gate (accuracy, N/A, coverage, reproducibility)
+  eval_agentready_live.py # Live 20-case pilot eval (manual, network-dependent)
+  probe_live.py          # Live observation sweep for labeling
 tests/
   test_safe_fetch.py
   test_storage.py
   test_orchestrator.py
   test_adapters.py
   test_core.py
+  test_agentready.py     # T01-T12 acceptance + shadow behavior (mocked transport)
+  test_agentready_eval.py # Eval gate: labeled set must stay green
+  test_agent_discovery_fixes.py # Served robots/auth.md/OAuth-absence/WebMCP/DNS-AID runbook
+  test_web_state.cjs     # Browser-state tests (node --test)
   fixtures/
     ora_sample.json
+    agentready_labeled_cases.json
+    agentready_live_cases.json
 examples/
   randevuo-ora.json      # Sample live Ora output
 docs/
   DECISIONS.md           # Architecture decision records
+  AGENTREADY_UPSTREAM.md # Third-party skill provenance (URLs + SHA-256)
+  DNS-AID.md             # DNS-AID operator runbook
 run.py                   # CLI entry point
 ```
 

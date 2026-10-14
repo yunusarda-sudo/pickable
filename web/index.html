@@ -42,10 +42,10 @@
       <div class="eyebrow hero-kicker"><span class="live-dot"></span> BE VISIBLE IN THE AGENT ERA</div>
       <h1 id="landing-title"><span class="mode-normal">Is your SaaS<br><em>ready to grow?</em></span><span class="mode-agent">Is your SaaS<br><em>agent-ready?</em></span></h1>
       <p class="hero-description">See your website through the eyes of customers and AI agents.</p>
-      <form id="scan-form" class="domain-form">
+      <form id="scan-form" class="domain-form" toolname="pickable_start_scan" tooldescription="Start a Pickable agent-readiness scan for one public website URL.">
         <label for="domain" class="sr-only">Public website URL to scan</label>
         <span class="input-globe" aria-hidden="true">◎</span>
-        <input id="domain" name="url" placeholder="https://yoursite.com" required maxlength="2000" autocomplete="url" spellcheck="false" autocapitalize="none">
+        <input id="domain" name="url" toolparamdescription="Public HTTP(S) root URL or exact page URL to scan, for example https://yoursite.com." placeholder="https://yoursite.com" required maxlength="2000" autocomplete="url" spellcheck="false" autocapitalize="none">
         <button id="scan-button" type="submit" aria-label="Start scan"><span>Scan</span><span aria-hidden="true">↗</span></button>
       </form>
       <div class="waitlist-cta">
@@ -141,6 +141,7 @@
   <dialog id="waitlist-dialog" class="waitlist-dialog" aria-labelledby="waitlist-title">
     <div class="dialog-head"><h2 id="waitlist-title">Get early access to Pickable</h2><button type="button" id="close-waitlist" class="waitlist-close" aria-label="Close">✕</button></div>
     <p class="waitlist-intro">Be among the first to explore deeper agent-readiness insights and compatibility testing.</p>
+    <p id="waitlist-demo-note" class="waitlist-demo-note" hidden>Demo mode: this signup is kept in memory only and disappears when the server restarts. It is not written to the waitlist database.</p>
     <form id="waitlist-form" class="waitlist-form" novalidate>
       <label for="waitlist-email">Email address</label>
       <input id="waitlist-email" name="email" type="email" required maxlength="254" autocomplete="email" spellcheck="false" autocapitalize="none" placeholder="you@company.com">

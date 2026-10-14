@@ -16,4 +16,4 @@ Scan history, statuses, reports, previews, and intelligence reads are scoped to 
 
 MCP defaults to describe_pickable, list_scans, and get_scan_report. start_website_scan is available only if the operator enables it and configures a bearer key. Check tools/list at runtime.
 
-The MCP server supports the 2025-03-26 and 2025-06-18 protocol versions using POST Streamable HTTP with JSON replies; GET/SSE is unsupported. Do not infer OAuth, A2A task processing, WebMCP, payments, or agent identity capabilities.
+The MCP server supports the 2025-03-26 and 2025-06-18 protocol versions using POST Streamable HTTP with JSON replies; GET/SSE is unsupported. Do not infer OAuth, A2A task processing, payments, or agent identity capabilities. Browser WebMCP tools (pickable_start_scan, pickable_list_scans, pickable_get_scan_report) are exposed on the landing page and call the same real REST endpoints as the UI.
