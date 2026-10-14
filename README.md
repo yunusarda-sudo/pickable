@@ -10,6 +10,40 @@ Multi-source Agent Readiness Reporting backend core in pure Python standard libr
 
 Probes domain readiness for AI agents via the Ora API, with Cloudflare's isitagentready.com as a per-check fallback, stores verbatim raw reports and normalized checks in SQLite, and provides resilient SSRF protection and parallel execution.
 
+## The engineering problem
+
+A website scan crosses several trust boundaries: a user-supplied URL, untrusted
+remote hosts, third-party provider responses, and asynchronous work. Pickable
+focuses on rejecting unsafe fetches, isolating provider failures, preserving
+recoverable job state, and showing when evidence is incomplete.
+
+```mermaid
+flowchart LR
+    U[Public URL] --> V[URL and SSRF validation]
+    V --> Q[Scan job]
+    Q --> O[Ora adapter]
+    Q --> C[Cloudflare adapter]
+    Q --> M[Marketing checks]
+    O --> N[Normalize while preserving evidence]
+    C --> N
+    M --> N
+    N --> DB[(SQLite)]
+    DB --> R[REST, web UI, optional MCP read interface]
+```
+
+## Engineering evidence
+
+| Challenge | Implementation and evidence |
+| --- | --- |
+| SSRF and DNS rebinding | Public-IP validation, destination pinning, HTTPS hostname verification, and safe redirects in [`app/safe_fetch.py`](app/safe_fetch.py) and [`app/ssrf.py`](app/ssrf.py); see [`tests/test_safe_fetch.py`](tests/test_safe_fetch.py). |
+| Provider failures | Concurrent adapters, bounded retry behavior, and source-specific outcomes in [`app/orchestrator.py`](app/orchestrator.py); see [`tests/test_orchestrator.py`](tests/test_orchestrator.py). |
+| Interrupted scans | SQLite persistence and startup recovery in [`app/storage.py`](app/storage.py); see [`tests/test_storage.py`](tests/test_storage.py). |
+| Incomplete or conflicting evidence | `UNKNOWN`, `NA`, and warnings remain distinct from definitive failures in [`app/adapters/base.py`](app/adapters/base.py) and [`app/reporting.py`](app/reporting.py). |
+| Agent-facing access | Discovery documents, scoped read routes, and opt-in scan creation in [`app/pickable_agent_routes.py`](app/pickable_agent_routes.py); see the [agent readiness report](AGENT_READINESS_REPORT.md). |
+
+The public demo domain is not the product name. Repository behavior and public
+deployment parity require separate verification; see the [validation notes](AGENT_READINESS_REPORT.md).
+
 ---
 
 ## Features
